@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ColimaStack">
+  <rect width="64" height="64" rx="14" fill="#0f766e"/>
+  <path d="M14 43h36v6H14zM18 34h28v6H18zM22 25h20v6H22zM27 15h10v7H27z" fill="#ecfeff"/>
+  <path d="M18 47h28" stroke="#99f6e4" stroke-width="3" stroke-linecap="round"/>
+</svg>
