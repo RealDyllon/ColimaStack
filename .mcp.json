@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "apple-docs": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "apple-doc-mcp-server@latest"
+      ],
+      "env": {}
+    }
+  }
+}
