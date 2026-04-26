@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 nonisolated protocol CombinedProcessOutput {
     var standardOutput: String { get }
@@ -58,6 +59,8 @@ nonisolated struct ProcessResult: Hashable, Sendable, CombinedProcessOutput {
     var terminationStatus: Int32
     var standardOutput: String
     var standardError: String
+    var standardOutputTruncated: Bool
+    var standardErrorTruncated: Bool
 
     init(
         executableURL: URL,
@@ -67,7 +70,9 @@ nonisolated struct ProcessResult: Hashable, Sendable, CombinedProcessOutput {
         duration: TimeInterval,
         terminationStatus: Int32,
         standardOutput: String,
-        standardError: String
+        standardError: String,
+        standardOutputTruncated: Bool = false,
+        standardErrorTruncated: Bool = false
     ) {
         self.executableURL = executableURL
         self.arguments = arguments
@@ -77,6 +82,8 @@ nonisolated struct ProcessResult: Hashable, Sendable, CombinedProcessOutput {
         self.terminationStatus = terminationStatus
         self.standardOutput = standardOutput
         self.standardError = standardError
+        self.standardOutputTruncated = standardOutputTruncated
+        self.standardErrorTruncated = standardErrorTruncated
     }
 
     init(request: ProcessRequest, exitCode: Int32, stdout: String, stderr: String) {
@@ -115,27 +122,112 @@ nonisolated protocol ProcessRunner {
     func run(_ request: ProcessRequest) throws -> ProcessResult
 }
 
-nonisolated struct LiveProcessRunner: ProcessRunner {
-    private let baseEnvironment: [String: String]
+nonisolated protocol CancellableProcessRunner: ProcessRunner {
+    func run(_ request: ProcessRequest, cancellation: ProcessCancellation?) throws -> ProcessResult
+}
 
-    init(baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) {
+nonisolated final class ProcessCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancelled = false
+
+    var isCancelled: Bool {
+        lock.lock()
+        let value = cancelled
+        lock.unlock()
+        return value
+    }
+
+    func bind(_ process: Process) {
+        lock.lock()
+        self.process = process
+        lock.unlock()
+    }
+
+    func clear(_ process: Process) {
+        lock.lock()
+        if self.process === process {
+            self.process = nil
+        }
+        lock.unlock()
+    }
+
+    func cancel() {
+        let process: Process?
+        lock.lock()
+        cancelled = true
+        process = self.process
+        lock.unlock()
+
+        guard let process, process.isRunning else { return }
+        process.terminate()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
+            guard process.isRunning else { return }
+            process.interrupt()
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 1) {
+                guard process.isRunning else { return }
+                kill(process.processIdentifier, SIGKILL)
+            }
+        }
+    }
+}
+
+nonisolated struct LiveProcessRunner: CancellableProcessRunner {
+    static let defaultOutputLimitBytes = 1_048_576
+    private static let ignoreSIGPIPE: Void = {
+        signal(SIGPIPE, SIG_IGN)
+    }()
+
+    private static let inheritedEnvironmentKeys: Set<String> = [
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "LC_COLLATE",
+        "LC_CTYPE",
+        "LC_MESSAGES",
+        "LC_MONETARY",
+        "LC_NUMERIC",
+        "LC_TIME",
+        "PATH",
+        "TMP",
+        "TMPDIR",
+        "TEMP"
+    ]
+
+    private let baseEnvironment: [String: String]
+    private let outputLimitBytes: Int
+
+    init(
+        baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+        outputLimitBytes: Int = Self.defaultOutputLimitBytes
+    ) {
         self.baseEnvironment = baseEnvironment
+        self.outputLimitBytes = outputLimitBytes
     }
 
     func run(_ request: ProcessRequest) throws -> ProcessResult {
+        try run(request, cancellation: nil)
+    }
+
+    func run(_ request: ProcessRequest, cancellation: ProcessCancellation?) throws -> ProcessResult {
         let process = Process()
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
         let launchedAt = Date()
-        let stdoutBuffer = ProcessOutputBuffer()
-        let stderrBuffer = ProcessOutputBuffer()
+        let stdoutBuffer = ProcessOutputBuffer(limit: outputLimitBytes)
+        let stderrBuffer = ProcessOutputBuffer(limit: outputLimitBytes)
+        let stdinPipe = request.standardInput.map { _ in Pipe() }
+        _ = Self.ignoreSIGPIPE
 
         process.executableURL = request.executableURL
         process.arguments = request.arguments
-        process.environment = baseEnvironment.merging(request.environment) { _, new in new }
+        process.environment = environment(for: request.environment)
         process.currentDirectoryURL = request.currentDirectoryURL
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
+        if let stdinPipe {
+            process.standardInput = stdinPipe
+        }
         stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty else { return }
@@ -151,18 +243,18 @@ nonisolated struct LiveProcessRunner: ProcessRunner {
             stderrPipe.fileHandleForReading.readabilityHandler = nil
         }
 
-        if let input = request.standardInput {
-            let stdinPipe = Pipe()
-            process.standardInput = stdinPipe
-            try stdinPipe.fileHandleForWriting.write(contentsOf: input)
-            stdinPipe.fileHandleForWriting.closeFile()
-        }
-
         let termination = request.timeout.map { _ in DispatchSemaphore(value: 0) }
         if let termination {
             process.terminationHandler = { _ in
                 termination.signal()
             }
+        }
+        cancellation?.bind(process)
+        defer {
+            cancellation?.clear(process)
+        }
+        if cancellation?.isCancelled == true {
+            throw CancellationError()
         }
 
         do {
@@ -175,9 +267,24 @@ nonisolated struct LiveProcessRunner: ProcessRunner {
             )
         }
 
+        if let input = request.standardInput, let stdinPipe {
+            DispatchQueue.global(qos: .utility).async {
+                defer {
+                    try? stdinPipe.fileHandleForWriting.close()
+                }
+                try? stdinPipe.fileHandleForWriting.write(contentsOf: input)
+            }
+        }
+
         if let timeout = request.timeout {
             if termination?.wait(timeout: .now() + timeout) == .timedOut {
                 process.terminate()
+                if termination?.wait(timeout: .now() + 2) == .timedOut {
+                    process.interrupt()
+                }
+                if termination?.wait(timeout: .now() + 1) == .timedOut {
+                    kill(process.processIdentifier, SIGKILL)
+                }
                 process.waitUntilExit()
                 throw ProcessRunnerError.timedOut(
                     executablePath: request.executableURL.path,
@@ -190,6 +297,10 @@ nonisolated struct LiveProcessRunner: ProcessRunner {
             process.waitUntilExit()
         }
 
+        if cancellation?.isCancelled == true {
+            throw CancellationError()
+        }
+
         stdoutPipe.fileHandleForReading.readabilityHandler = nil
         stderrPipe.fileHandleForReading.readabilityHandler = nil
         let remainingStdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
@@ -199,8 +310,8 @@ nonisolated struct LiveProcessRunner: ProcessRunner {
         let stdoutSnapshot = stdoutBuffer.snapshot()
         let stderrSnapshot = stderrBuffer.snapshot()
 
-        let stdout = try decode(stdoutSnapshot, stream: "stdout", executablePath: request.executableURL.path)
-        let stderr = try decode(stderrSnapshot, stream: "stderr", executablePath: request.executableURL.path)
+        let stdout = try decode(stdoutSnapshot.data, stream: "stdout", executablePath: request.executableURL.path)
+        let stderr = try decode(stderrSnapshot.data, stream: "stderr", executablePath: request.executableURL.path)
 
         return ProcessResult(
             executableURL: request.executableURL,
@@ -210,8 +321,17 @@ nonisolated struct LiveProcessRunner: ProcessRunner {
             duration: Date().timeIntervalSince(launchedAt),
             terminationStatus: process.terminationStatus,
             standardOutput: stdout,
-            standardError: stderr
+            standardError: stderr,
+            standardOutputTruncated: stdoutSnapshot.truncated,
+            standardErrorTruncated: stderrSnapshot.truncated
         )
+    }
+
+    private func environment(for overrides: [String: String]) -> [String: String] {
+        let inherited = baseEnvironment.filter { key, value in
+            !value.isEmpty && Self.inheritedEnvironmentKeys.contains(key)
+        }
+        return inherited.merging(overrides) { _, new in new }
     }
 
     private func decode(_ data: Data, stream: String, executablePath: String) throws -> String {
@@ -224,20 +344,43 @@ nonisolated struct LiveProcessRunner: ProcessRunner {
 }
 
 nonisolated private final class ProcessOutputBuffer: @unchecked Sendable {
+    struct Snapshot {
+        var data: Data
+        var truncated: Bool
+    }
+
     private let lock = NSLock()
+    private let limit: Int
     private var data = Data()
+    private var droppedByteCount = 0
+
+    init(limit: Int) {
+        self.limit = max(limit, 0)
+    }
 
     func append(_ newData: Data) {
         guard !newData.isEmpty else { return }
         lock.lock()
-        data.append(newData)
+        if data.count < limit {
+            let available = limit - data.count
+            data.append(newData.prefix(available))
+            if newData.count > available {
+                droppedByteCount += newData.count - available
+            }
+        } else {
+            droppedByteCount += newData.count
+        }
         lock.unlock()
     }
 
-    func snapshot() -> Data {
+    func snapshot() -> Snapshot {
         lock.lock()
-        let value = data
+        var value = data
+        let droppedByteCount = droppedByteCount
         lock.unlock()
-        return value
+        if droppedByteCount > 0 {
+            value.append(Data("\n[output truncated; dropped \(droppedByteCount) bytes]".utf8))
+        }
+        return Snapshot(data: value, truncated: droppedByteCount > 0)
     }
 }

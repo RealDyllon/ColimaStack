@@ -128,6 +128,43 @@ struct AppStateBackendAggregationTests {
         #expect(sample.blockWriteBytes == 4_000)
     }
 
+    @Test func runtimeUsageSamplesHaveStableUniqueIdentities() {
+        let snapshot = Self.backendSnapshot(
+            profile: Self.profile(named: "default", state: .running),
+            status: Self.detail(profile: "default", state: .running),
+            issues: []
+        )
+
+        let first = snapshot.runtimeUsageSample()
+        let second = snapshot.runtimeUsageSample()
+
+        #expect(first.id != second.id)
+    }
+
+    @Test func refreshProfileTrimsMonitorHistoryPerProfile() async {
+        let colima = RecordingFakeColima()
+        colima.statusByProfile["default"] = Self.detail(profile: "default", state: .running)
+
+        let backend = RecordingBackendSnapshotProvider()
+        backend.snapshotsByProfile["default"] = Self.backendSnapshot(
+            profile: Self.profile(named: "default", state: .running),
+            status: Self.detail(profile: "default", state: .running),
+            issues: []
+        )
+        let state = AppState(colima: colima, profiles: [Self.profile(named: "default", state: .running)], backend: backend)
+        state.monitorHistory = [
+            Self.backendSnapshot(profile: Self.profile(named: "dev", state: .running), status: Self.detail(profile: "dev", state: .running), issues: []).runtimeUsageSample(),
+            Self.backendSnapshot(profile: Self.profile(named: "dev", state: .running), status: Self.detail(profile: "dev", state: .running), issues: []).runtimeUsageSample()
+        ]
+
+        for _ in 0..<95 {
+            await state.refreshProfile("default")
+        }
+
+        #expect(state.monitorHistory.filter { $0.profileID == "default" }.count == 90)
+        #expect(state.monitorHistory.filter { $0.profileID == "dev" }.count == 2)
+    }
+
     @Test func successfulCommandRecordsSucceededEntryAndIndexesCommandOutput() async {
         let colima = RecordingFakeColima()
         colima.commandResult = ProcessResult(
@@ -153,6 +190,26 @@ struct AppStateBackendAggregationTests {
         #expect(results.count == 1)
         #expect(results.first?.kind == .command)
         #expect(results.first?.title == "Start default")
+    }
+
+    @Test func commandLogRedactsBeforeTruncatingLongOutput() async {
+        let colima = RecordingFakeColima()
+        colima.commandResult = ProcessResult(
+            request: ProcessRequest(arguments: ["colima", "start"]),
+            exitCode: 0,
+            stdout: String(repeating: "x", count: 200_010) + " TOKEN=abc123",
+            stderr: ""
+        )
+
+        let state = AppState(colima: colima, profiles: [Self.profile(named: "default", state: .running)])
+        state.selectedProfileID = "default"
+
+        await state.startSelected()
+
+        let output = state.commandLog.first?.output ?? ""
+        #expect(output.hasPrefix("[Output truncated to the last 200000 characters]"))
+        #expect(output.contains("TOKEN=<redacted>"))
+        #expect(!output.contains("abc123"))
     }
 
     @Test func failedCommandRecordsFailureAndIndexesErrorOutput() async {

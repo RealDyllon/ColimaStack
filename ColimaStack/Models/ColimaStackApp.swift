@@ -71,6 +71,6 @@ struct ColimaStackApp: App {
             window.makeKeyAndOrderFront(nil)
             return
         }
-        NSApp.sendAction(Selector(("newWindowForTab:")), to: nil, from: nil)
+        NSApp.sendAction(#selector(NSResponder.newWindowForTab(_:)), to: nil, from: nil)
     }
 }

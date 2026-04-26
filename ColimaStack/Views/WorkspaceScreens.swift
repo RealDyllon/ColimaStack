@@ -13,7 +13,6 @@ enum WorkspaceRoute: String, CaseIterable, Hashable, Identifiable {
     case kubernetesServices
     case profiles
     case activity
-    case settings
     case diagnostics
 
     var id: String { rawValue }
@@ -31,7 +30,6 @@ enum WorkspaceRoute: String, CaseIterable, Hashable, Identifiable {
         case .kubernetesServices: "Services"
         case .profiles: "Profiles"
         case .activity: "Activity"
-        case .settings: "Settings"
         case .diagnostics: "Diagnostics"
         }
     }
@@ -49,7 +47,6 @@ enum WorkspaceRoute: String, CaseIterable, Hashable, Identifiable {
         case .kubernetesServices: "point.3.connected.trianglepath.dotted"
         case .profiles: "rectangle.stack"
         case .activity: "terminal"
-        case .settings: "gearshape"
         case .diagnostics: "stethoscope"
         }
     }
@@ -76,7 +73,7 @@ enum WorkspaceRoute: String, CaseIterable, Hashable, Identifiable {
             "Runtime"
         case .kubernetesCluster, .kubernetesWorkloads, .kubernetesServices:
             "Kubernetes"
-        case .settings, .diagnostics:
+        case .diagnostics:
             "Support"
         }
     }
@@ -110,8 +107,6 @@ struct WorkspaceDetailRouter: View {
             ProfilesScreen(searchText: searchText)
         case .activity:
             ActivityScreen(searchText: searchText)
-        case .settings:
-            SettingsWindowView()
         case .diagnostics:
             DiagnosticsScreen()
         }
@@ -283,7 +278,7 @@ struct ContainersScreen: View {
     private var containers: [DockerContainerResource] {
         (appState.backendSnapshot?.docker?.containers ?? []).filter {
             matchesSearch(searchText, values: [$0.name, $0.image, $0.state, $0.status, $0.ports])
-        }
+        }.sorted { ($0.name.isEmpty ? $0.id : $0.name).localizedCaseInsensitiveCompare($1.name.isEmpty ? $1.id : $1.name) == .orderedAscending }
     }
 
     var body: some View {
@@ -386,7 +381,7 @@ struct ImagesScreen: View {
     private var images: [DockerImageResource] {
         (appState.backendSnapshot?.docker?.images ?? []).filter {
             matchesSearch(searchText, values: [$0.displayName, $0.id, $0.digest, $0.size])
-        }
+        }.sorted { ($0.displayName.isEmpty ? $0.id : $0.displayName).localizedCaseInsensitiveCompare($1.displayName.isEmpty ? $1.id : $1.displayName) == .orderedAscending }
     }
 
     var body: some View {
@@ -478,7 +473,7 @@ struct VolumesScreen: View {
     private var volumes: [DockerVolumeResource] {
         (appState.backendSnapshot?.docker?.volumes ?? []).filter {
             matchesSearch(searchText, values: [$0.name, $0.driver, $0.scope, $0.mountpoint])
-        }
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     var body: some View {
@@ -570,7 +565,7 @@ struct NetworksScreen: View {
     private var dockerNetworks: [DockerNetworkResource] {
         (appState.backendSnapshot?.docker?.networks ?? []).filter {
             matchesSearch(searchText, values: [$0.name, $0.id, $0.driver, $0.scope])
-        }
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private var networkRows: [(String, String, String, String)] {
@@ -939,7 +934,7 @@ struct KubernetesClusterScreen: View {
     private var nodes: [KubernetesNodeResource] {
         (appState.backendSnapshot?.kubernetes?.nodes ?? []).filter {
             matchesSearch(searchText, values: [$0.metadata.name, $0.internalIP, $0.kubeletVersion, $0.roles.joined(separator: " ")])
-        }
+        }.sorted { $0.metadata.name.localizedCaseInsensitiveCompare($1.metadata.name) == .orderedAscending }
     }
 
     var body: some View {
@@ -1053,12 +1048,12 @@ struct KubernetesWorkloadsScreen: View {
     private var pods: [KubernetesPodResource] {
         (appState.backendSnapshot?.kubernetes?.pods ?? []).filter {
             matchesSearch(searchText, values: [$0.metadata.name, $0.metadata.namespace ?? "", $0.phase, $0.nodeName])
-        }
+        }.sorted { "\($0.metadata.namespace ?? "default")/\($0.metadata.name)".localizedCaseInsensitiveCompare("\($1.metadata.namespace ?? "default")/\($1.metadata.name)") == .orderedAscending }
     }
     private var deployments: [KubernetesDeploymentResource] {
         (appState.backendSnapshot?.kubernetes?.deployments ?? []).filter {
             matchesSearch(searchText, values: [$0.metadata.name, $0.metadata.namespace ?? ""])
-        }
+        }.sorted { "\($0.metadata.namespace ?? "default")/\($0.metadata.name)".localizedCaseInsensitiveCompare("\($1.metadata.namespace ?? "default")/\($1.metadata.name)") == .orderedAscending }
     }
 
     var body: some View {
@@ -1132,7 +1127,7 @@ struct KubernetesServicesScreen: View {
     private var services: [KubernetesServiceResource] {
         (appState.backendSnapshot?.kubernetes?.services ?? []).filter {
             matchesSearch(searchText, values: [$0.metadata.name, $0.metadata.namespace ?? "", $0.type, $0.clusterIP] + $0.ports)
-        }
+        }.sorted { "\($0.metadata.namespace ?? "default")/\($0.metadata.name)".localizedCaseInsensitiveCompare("\($1.metadata.namespace ?? "default")/\($1.metadata.name)") == .orderedAscending }
     }
 
     var body: some View {
@@ -1546,6 +1541,7 @@ struct DiagnosticsScreen: View {
 
 private struct CommandEntryRow: View {
     let entry: CommandLogEntry
+    @State private var isOutputExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1564,7 +1560,13 @@ private struct CommandEntryRow: View {
                 Text(entry.output)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
-                    .lineLimit(4)
+                    .lineLimit(isOutputExpanded ? nil : 4)
+                    .textSelection(.enabled)
+                Button(isOutputExpanded ? "Collapse output" : "Expand output") {
+                    isOutputExpanded.toggle()
+                }
+                .font(.caption)
+                .buttonStyle(.link)
             }
         }
         .padding(.vertical, 10)

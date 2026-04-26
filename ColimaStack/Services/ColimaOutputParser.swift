@@ -7,11 +7,14 @@ protocol ColimaOutputParsing {
 
 enum ColimaOutputParserError: LocalizedError, Equatable {
     case malformedListRow(String)
+    case unsafeProfileName(String)
 
     var errorDescription: String? {
         switch self {
         case let .malformedListRow(row):
             return "Unable to parse Colima list row: \(row)"
+        case let .unsafeProfileName(name):
+            return "Colima reported an unsafe profile name: \(name)"
         }
     }
 }
@@ -40,7 +43,7 @@ struct ColimaOutputParser: ColimaOutputParsing {
         guard let header = lines.first else { return [] }
         let headers = splitColumns(header).map { $0.lowercased() }
         return try lines.dropFirst().map { line in
-            guard let profile = parseListLine(line, headers: headers) else {
+            guard let profile = try parseListLine(line, headers: headers) else {
                 throw ColimaOutputParserError.malformedListRow(line)
             }
             return profile
@@ -93,14 +96,14 @@ struct ColimaOutputParser: ColimaOutputParsing {
         let decoder = JSONDecoder()
         let lines = output.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         if output.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("[") {
-            return try decoder.decode([ColimaListJSON].self, from: Data(output.utf8)).map(\.profile)
+            return try decoder.decode([ColimaListJSON].self, from: Data(output.utf8)).map { try $0.profile }
         }
         return try lines.filter { $0.hasPrefix("{") }.map { try decoder.decode(ColimaListJSON.self, from: Data($0.utf8)).profile }
     }
 
     private func parseJSONStatus(_ output: String, profile: String) throws -> ColimaStatusDetail? {
         guard let payload = jsonObjectPayload(in: output) else { return nil }
-        return try JSONDecoder().decode(ColimaStatusJSON.self, from: Data(payload.utf8)).detail(profile: profile)
+        return try JSONDecoder().decode(ColimaStatusJSON.self, from: Data(payload.utf8)).detail(profile: profile, rawOutput: output)
     }
 
     private func jsonObjectPayload(in output: String) -> String? {
@@ -111,7 +114,7 @@ struct ColimaOutputParser: ColimaOutputParsing {
         return String(trimmed[start...end])
     }
 
-    private func parseListLine(_ line: String, headers: [String]) -> ColimaProfile? {
+    private func parseListLine(_ line: String, headers: [String]) throws -> ColimaProfile? {
         let columns = splitColumns(line)
         guard !columns.isEmpty else { return nil }
         func value(_ aliases: [String], fallback: Int? = nil) -> String {
@@ -125,6 +128,9 @@ struct ColimaOutputParser: ColimaOutputParsing {
         }
         let name = value(["profile", "name"], fallback: 0)
         guard !name.isEmpty else { return nil }
+        guard ProfileNameValidator.isValid(name) else {
+            throw ColimaOutputParserError.unsafeProfileName(name)
+        }
         let resources = ResourceAllocation(cpu: Int(value(["cpu", "cpus"])) ?? 0, memoryGiB: parseGiB(value(["memory", "mem"])), diskGiB: parseGiB(value(["disk"])))
         return ColimaProfile(
             name: name,
@@ -191,10 +197,7 @@ struct ColimaOutputParser: ColimaOutputParsing {
     }
 
     private func parseGiB(_ value: String) -> Int {
-        if let integer = Int(digits(in: value)) {
-            return integer
-        }
-        return 0
+        ResourceQuantityParser.gib(value)
     }
 
     private func digits(in value: String) -> String {
@@ -230,6 +233,10 @@ private struct ColimaListJSON: Decodable {
     var runtime: String?
 
     var profile: ColimaProfile {
+        get throws {
+            guard ProfileNameValidator.isValid(name) else {
+                throw ColimaOutputParserError.unsafeProfileName(name)
+            }
         let parsedRuntime = runtime.flatMap { value in ColimaRuntime.allCases.first { value.lowercased().contains($0.rawValue) } }
         return ColimaProfile(
             name: name,
@@ -246,6 +253,7 @@ private struct ColimaListJSON: Decodable {
             socket: "",
             rawSummary: ""
         )
+        }
     }
 
     private static func state(_ value: String?) -> ProfileState {
@@ -285,10 +293,11 @@ private struct ColimaStatusJSON: Decodable {
         case incusSocket = "incus_socket"
     }
 
-    func detail(profile: String) -> ColimaStatusDetail {
+    func detail(profile: String, rawOutput: String) -> ColimaStatusDetail {
         let socket = dockerSocket ?? containerdSocket ?? incusSocket ?? buildkitdSocket ?? ""
         return ColimaStatusDetail(
             profileName: displayName ?? profile,
+            // Colima only emits status JSON for a running VM; non-running states come from the command failure/plain-text path.
             state: .running,
             runtime: runtime.flatMap { value in ColimaRuntime.allCases.first { value.lowercased().contains($0.rawValue) } },
             architecture: arch.flatMap { CPUArchitecture(rawValue: $0) },
@@ -300,7 +309,7 @@ private struct ColimaStatusJSON: Decodable {
             socket: socket,
             dockerContext: profile == "default" ? "colima" : "colima-\(profile)",
             errors: [],
-            rawOutput: ""
+            rawOutput: rawOutput
         )
     }
 }

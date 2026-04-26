@@ -29,8 +29,12 @@ enum AutoRefreshFrequency: String, CaseIterable, Identifiable {
 @MainActor
 final class AppState: ObservableObject {
     @Published var profiles: [ColimaProfile]
-    @Published var selectedProfileID: ColimaProfile.ID?
-    @Published var selectedSection: WorkspaceRoute = .overview
+    @Published var selectedProfileID: ColimaProfile.ID? {
+        didSet { persistSelectedProfileID() }
+    }
+    @Published var selectedSection: WorkspaceRoute = .overview {
+        didSet { userDefaults?.set(selectedSection.rawValue, forKey: DefaultsKey.selectedSection) }
+    }
     @Published var selectedProfileDetail: ColimaStatusDetail?
     @Published var backendSnapshot: ColimaBackendSnapshot?
     @Published var backendIssues: [BackendIssue] = []
@@ -45,32 +49,54 @@ final class AppState: ObservableObject {
     @Published var presentedError: AppError?
     @Published var isShowingProfileEditor = false
     @Published var editingConfiguration: ProfileConfiguration = .default
-    @Published var autoRefresh = true
-    @Published var autoRefreshFrequency: AutoRefreshFrequency = .normal
+    @Published var autoRefresh = true {
+        didSet { userDefaults?.set(autoRefresh, forKey: DefaultsKey.autoRefresh) }
+    }
+    @Published var autoRefreshFrequency: AutoRefreshFrequency = .normal {
+        didSet { userDefaults?.set(autoRefreshFrequency.rawValue, forKey: DefaultsKey.autoRefreshFrequency) }
+    }
+    @Published var hasCompletedDiagnostics = false
 
     private let colima: ColimaControlling
     private let backend: BackendSnapshotProviding?
     private let searchIndexer: BackendSearchIndexing
+    private let userDefaults: UserDefaults?
     private let maxMonitorHistorySamples = 90
     private let maxCommandLogEntries = 200
+    private let maxLogCharacters = 200_000
     private var profileEditorTask: Task<Void, Never>?
+    private var refreshGeneration = 0
 
     init(
         colima: ColimaControlling,
         profiles: [ColimaProfile] = [],
         backend: BackendSnapshotProviding? = nil,
-        searchIndexer: BackendSearchIndexing? = nil
+        searchIndexer: BackendSearchIndexing? = nil,
+        userDefaults: UserDefaults? = nil
     ) {
         self.colima = colima
         self.backend = backend
         self.searchIndexer = searchIndexer ?? BackendSearchIndexer()
+        self.userDefaults = userDefaults
         self.profiles = profiles
-        self.selectedProfileID = profiles.first?.id
+        if let rawSection = userDefaults?.string(forKey: DefaultsKey.selectedSection),
+           let section = WorkspaceRoute(rawValue: rawSection) {
+            self.selectedSection = section
+        }
+        if userDefaults?.object(forKey: DefaultsKey.autoRefresh) != nil {
+            self.autoRefresh = userDefaults?.bool(forKey: DefaultsKey.autoRefresh) ?? true
+        }
+        if let rawFrequency = userDefaults?.string(forKey: DefaultsKey.autoRefreshFrequency),
+           let frequency = AutoRefreshFrequency(rawValue: rawFrequency) {
+            self.autoRefreshFrequency = frequency
+        }
+        let persistedProfileID = userDefaults?.string(forKey: DefaultsKey.selectedProfileID)
+        self.selectedProfileID = persistedProfileID.flatMap { id in profiles.contains(where: { $0.id == id }) ? id : nil } ?? profiles.first?.id
         rebuildSearchIndex()
     }
 
     static func live() -> AppState {
-        AppState(colima: LiveColimaCLI(), backend: LiveBackendSnapshotService())
+        AppState(colima: LiveColimaCLI(), backend: LiveBackendSnapshotService(), userDefaults: .standard)
     }
 
     static func preview() -> AppState {
@@ -82,11 +108,12 @@ final class AppState: ObservableObject {
     }
 
     var hasCollectedDiagnostics: Bool {
-        diagnostics.tools.contains { $0.id == "colima" }
+        hasCompletedDiagnostics || diagnostics.tools.contains { $0.id == "colima" }
     }
 
     var hasColima: Bool {
-        diagnostics.tools.first(where: { $0.id == "colima" }).map {
+        guard hasCollectedDiagnostics else { return false }
+        return diagnostics.tools.first(where: { $0.id == "colima" }).map {
             if case .available = $0.availability { return true }
             return false
         } ?? false
@@ -111,19 +138,25 @@ final class AppState: ObservableObject {
 
     func refreshAll() async {
         guard !isRefreshing else { return }
+        refreshGeneration += 1
+        let generation = refreshGeneration
         isRefreshing = true
         defer { isRefreshing = false }
         diagnostics = await colima.diagnostics()
+        hasCompletedDiagnostics = true
         do {
             let previousProfiles = profiles
-            profiles = mergeFreshProfiles(try await colima.listProfiles(), preservingDetailsFrom: previousProfiles)
+            let freshProfiles = try await colima.listProfiles()
+            guard generation == refreshGeneration else { return }
+            profiles = mergeFreshProfiles(freshProfiles, preservingDetailsFrom: previousProfiles)
             if selectedProfileID == nil || !profiles.contains(where: { $0.id == selectedProfileID }) {
-                selectedProfileID = profiles.first?.id
+                selectedProfileID = persistedSelectedProfileID(in: profiles) ?? profiles.first?.id
             }
             if let selectedProfileID {
-                await refreshProfile(selectedProfileID)
+                await refreshProfile(selectedProfileID, generation: generation)
             }
         } catch ColimaCLIError.missingColima {
+            guard generation == refreshGeneration else { return }
             profiles = []
             selectedProfileDetail = nil
             backendSnapshot = nil
@@ -139,6 +172,7 @@ final class AppState: ObservableObject {
             logs = ""
             rebuildSearchIndex()
         } catch {
+            guard generation == refreshGeneration else { return }
             presentedError = AppError(message: error.localizedDescription)
         }
     }
@@ -170,9 +204,16 @@ final class AppState: ObservableObject {
     }
 
     func refreshProfile(_ profile: String) async {
+        refreshGeneration += 1
+        await refreshProfile(profile, generation: refreshGeneration)
+    }
+
+    private func refreshProfile(_ profile: String, generation: Int) async {
         do {
-            selectedProfileDetail = try await colima.status(profile: profile)
-            if let detail = selectedProfileDetail, let index = profiles.firstIndex(where: { $0.id == profile }) {
+            let detail = try await colima.status(profile: profile)
+            guard generation == refreshGeneration, selectedProfileID == profile else { return }
+            selectedProfileDetail = detail
+            if let index = profiles.firstIndex(where: { $0.id == profile }) {
                 profiles[index].state = detail.state
                 profiles[index].runtime = detail.runtime ?? profiles[index].runtime
                 profiles[index].architecture = detail.architecture ?? profiles[index].architecture
@@ -193,9 +234,12 @@ final class AppState: ObservableObject {
                     }
                 }
             }
-            logs = try await colima.logs(profile: profile)
+            let profileLogs = try await colima.logs(profile: profile)
+            guard generation == refreshGeneration, selectedProfileID == profile else { return }
+            logs = cappedLog(profileLogs)
             if let backend, let selectedProfile, let selectedProfileDetail, selectedProfile.state == .running {
                 let snapshot = await backend.snapshot(profile: selectedProfile, status: selectedProfileDetail)
+                guard generation == refreshGeneration, selectedProfileID == profile else { return }
                 backendSnapshot = snapshot
                 backendIssues = snapshot.issues
                 appendMonitorSample(from: snapshot)
@@ -205,6 +249,7 @@ final class AppState: ObservableObject {
             }
             rebuildSearchIndex()
         } catch {
+            guard generation == refreshGeneration else { return }
             presentedError = AppError(message: error.localizedDescription)
         }
     }
@@ -227,7 +272,11 @@ final class AppState: ObservableObject {
 
     func deleteSelected() async {
         guard let selectedProfileID else { return }
-        await runCommand("Delete \(selectedProfileID)") { try await colima.delete(profile: selectedProfileID) }
+        await delete(profileID: selectedProfileID)
+    }
+
+    func delete(profileID: ColimaProfile.ID) async {
+        await runCommand("Delete \(profileID)") { try await colima.delete(profile: profileID) }
     }
 
     func updateSelected() async {
@@ -282,6 +331,10 @@ final class AppState: ObservableObject {
 
     func saveEditingConfiguration() async {
         let configuration = editingConfiguration
+        if profiles.contains(where: { $0.name == configuration.name && $0.id != selectedProfileID }) {
+            presentedError = AppError(message: "A profile named '\(configuration.name)' already exists.")
+            return
+        }
         let succeeded = await runCommand("Apply \(configuration.name)") { try await colima.start(configuration) }
         if succeeded {
             profileEditorTask?.cancel()
@@ -300,13 +353,13 @@ final class AppState: ObservableObject {
         do {
             let result = try await operation()
             entry.status = .succeeded
-            entry.output = result.combinedOutput
+            entry.output = cappedLog(result.combinedOutput)
             replaceCommandEntry(entry)
             await refreshAll()
             return true
         } catch {
             entry.status = .failed(error.localizedDescription)
-            entry.output = error.localizedDescription
+            entry.output = cappedLog(error.localizedDescription)
             replaceCommandEntry(entry)
             presentedError = AppError(message: error.localizedDescription)
             return false
@@ -317,12 +370,35 @@ final class AppState: ObservableObject {
         if let index = commandLog.firstIndex(where: { $0.id == entry.id }) {
             commandLog[index] = entry
         }
+        trimCommandLog()
         rebuildSearchIndex()
     }
 
     private func trimCommandLog() {
         guard commandLog.count > maxCommandLogEntries else { return }
         commandLog.removeSubrange(maxCommandLogEntries..<commandLog.endIndex)
+    }
+
+    private func cappedLog(_ value: String) -> String {
+        let redacted = EnvironmentRedactor.redacted(value)
+        guard redacted.count > maxLogCharacters else { return redacted }
+        return "[Output truncated to the last \(maxLogCharacters) characters]\n" + String(redacted.suffix(maxLogCharacters))
+    }
+
+    private func persistedSelectedProfileID(in profiles: [ColimaProfile]) -> String? {
+        guard let id = userDefaults?.string(forKey: DefaultsKey.selectedProfileID),
+              profiles.contains(where: { $0.id == id }) else {
+            return nil
+        }
+        return id
+    }
+
+    private func persistSelectedProfileID() {
+        if let selectedProfileID {
+            userDefaults?.set(selectedProfileID, forKey: DefaultsKey.selectedProfileID)
+        } else {
+            userDefaults?.removeObject(forKey: DefaultsKey.selectedProfileID)
+        }
     }
 
     private func appendMonitorSample(from snapshot: ColimaBackendSnapshot) {
@@ -377,6 +453,13 @@ private extension CommandLogEntry.Status {
         if case let .failed(message) = self { return message }
         return nil
     }
+}
+
+private enum DefaultsKey {
+    static let selectedProfileID = "selectedProfileID"
+    static let selectedSection = "selectedSection"
+    static let autoRefresh = "autoRefresh"
+    static let autoRefreshFrequency = "autoRefreshFrequency"
 }
 
 struct AppError: Identifiable, Equatable {

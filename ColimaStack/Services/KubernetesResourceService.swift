@@ -6,8 +6,6 @@ protocol KubernetesResourceProviding {
 }
 
 struct LiveKubernetesResourceService: KubernetesResourceProviding {
-    private static let timestampFormatter = ISO8601DateFormatter()
-
     private let commandRunner: CommandRunProviding
 
     init(commandRunner: CommandRunProviding = LiveCommandRunService()) {
@@ -32,65 +30,62 @@ struct LiveKubernetesResourceService: KubernetesResourceProviding {
     }
 
     func snapshot(context: String? = nil) async throws -> KubernetesResourceSnapshot {
-        var issues: [BackendIssue] = []
-        var runs: [ManagedCommandRun] = []
         let collectedAt = Date()
-        let discoveredContext = await collectString(
+        async let discoveredContextResult = collectStringResult(
             context: context,
             arguments: ["config", "current-context"],
-            purpose: "Read active Kubernetes context",
-            issues: &issues,
-            runs: &runs
+            purpose: "Read active Kubernetes context"
         )
-        let activeContext = context ?? discoveredContext ?? ""
 
-        let nodes = await collectList(
+        async let nodesResult = collectListResult(
             context: context,
             arguments: ["get", "nodes", "-o", "json"],
             purpose: "List Kubernetes nodes",
-            issues: &issues,
-            runs: &runs,
             transform: Self.node
         )
-        let namespaces = await collectList(
+        async let namespacesResult = collectListResult(
             context: context,
             arguments: ["get", "namespaces", "-o", "json"],
             purpose: "List Kubernetes namespaces",
-            issues: &issues,
-            runs: &runs,
             transform: Self.namespace
         )
-        let pods = await collectList(
+        async let podsResult = collectListResult(
             context: context,
             arguments: ["get", "pods", "--all-namespaces", "-o", "json"],
             purpose: "List Kubernetes pods",
-            issues: &issues,
-            runs: &runs,
             transform: Self.pod
         )
-        let services = await collectList(
+        async let servicesResult = collectListResult(
             context: context,
             arguments: ["get", "services", "--all-namespaces", "-o", "json"],
             purpose: "List Kubernetes services",
-            issues: &issues,
-            runs: &runs,
             transform: Self.service
         )
-        let deployments = await collectList(
+        async let deploymentsResult = collectListResult(
             context: context,
             arguments: ["get", "deployments", "--all-namespaces", "-o", "json"],
             purpose: "List Kubernetes deployments",
-            issues: &issues,
-            runs: &runs,
             transform: Self.deployment
         )
-        let metrics = await collectMetrics(context: context, issues: &issues, runs: &runs)
+        async let metricsResult = collectMetricsResult(context: context)
+
+        let discoveredContext = await discoveredContextResult
+        let nodes = await nodesResult
+        let namespaces = await namespacesResult
+        let pods = await podsResult
+        let services = await servicesResult
+        let deployments = await deploymentsResult
+        let metrics = await metricsResult
+
+        let activeContext = context ?? discoveredContext.value ?? ""
+        var issues = discoveredContext.issues + nodes.issues + namespaces.issues + pods.issues + services.issues + deployments.issues + metrics.issues
+        let runs = discoveredContext.runs + nodes.runs + namespaces.runs + pods.runs + services.runs + deployments.runs + metrics.runs
 
         if runs.isEmpty, let issue = issues.first(where: { $0.severity == .error }) {
             throw KubernetesResourceServiceError.unavailable(issue.message)
         }
 
-        issues.append(contentsOf: pods.compactMap { pod in
+        issues.append(contentsOf: pods.values.compactMap { pod in
             pod.health == .error ? BackendIssue(
                 severity: .error,
                 source: .kubernetes,
@@ -98,7 +93,7 @@ struct LiveKubernetesResourceService: KubernetesResourceProviding {
                 message: "\(pod.metadata.namespace ?? "default")/\(pod.metadata.name) is in phase \(pod.phase)."
             ) : nil
         })
-        issues.append(contentsOf: deployments.compactMap { deployment in
+        issues.append(contentsOf: deployments.values.compactMap { deployment in
             deployment.health == .warning ? BackendIssue(
                 severity: .warning,
                 source: .kubernetes,
@@ -110,15 +105,114 @@ struct LiveKubernetesResourceService: KubernetesResourceProviding {
         return KubernetesResourceSnapshot(
             context: activeContext,
             collectedAt: collectedAt,
-            nodes: nodes,
-            namespaces: namespaces,
-            pods: pods,
-            services: services,
-            deployments: deployments,
-            metrics: metrics,
+            nodes: nodes.values,
+            namespaces: namespaces.values,
+            pods: pods.values,
+            services: services.values,
+            deployments: deployments.values,
+            metrics: metrics.values,
             issues: issues,
             commandRuns: runs
         )
+    }
+
+    private func collectStringResult(
+        context: String?,
+        arguments: [String],
+        purpose: String
+    ) async -> (value: String?, issues: [BackendIssue], runs: [ManagedCommandRun]) {
+        var issues: [BackendIssue] = []
+        guard let run = await runKubectl(context: context, arguments: arguments, purpose: purpose, issues: &issues) else {
+            return (nil, issues, [])
+        }
+        guard run.succeeded else {
+            issues.append(issue(for: run, title: purpose, severity: .warning))
+            return (nil, issues, [run])
+        }
+        return (run.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines), issues, [run])
+    }
+
+    private func collectListResult<Value>(
+        context: String?,
+        arguments: [String],
+        purpose: String,
+        transform: ([String: Any]) -> Value?
+    ) async -> (values: [Value], issues: [BackendIssue], runs: [ManagedCommandRun]) {
+        var issues: [BackendIssue] = []
+        guard let run = await runKubectl(context: context, arguments: arguments, purpose: purpose, issues: &issues) else {
+            return ([], issues, [])
+        }
+        guard run.succeeded else {
+            issues.append(issue(for: run, title: purpose, severity: .warning))
+            return ([], issues, [run])
+        }
+        guard let object = JSONCommandParser.object(from: run.standardOutput) else {
+            issues.append(
+                BackendIssue(
+                    severity: .warning,
+                    source: .kubernetes,
+                    title: "Unable to parse Kubernetes output",
+                    message: "The command output for \(purpose) was not valid JSON.",
+                    command: run.commandString
+                )
+            )
+            return ([], issues, [run])
+        }
+        var values: [Value] = []
+        for (index, item) in object.dictionaries("items").enumerated() {
+            guard let value = transform(item) else {
+                issues.append(
+                    BackendIssue(
+                        severity: .warning,
+                        source: .kubernetes,
+                        title: "Invalid Kubernetes resource item",
+                        message: "The command output for \(purpose) included item \(index) without required metadata.name.",
+                        command: run.commandString
+                    )
+                )
+                continue
+            }
+            values.append(value)
+        }
+        return (values, issues, [run])
+    }
+
+    private func collectMetricsResult(
+        context: String?
+    ) async -> (values: [KubernetesMetricResource], issues: [BackendIssue], runs: [ManagedCommandRun]) {
+        var issues: [BackendIssue] = []
+        var runs: [ManagedCommandRun] = []
+        var metrics: [KubernetesMetricResource] = []
+        let nodeRun = await runKubectl(
+            context: context,
+            arguments: ["top", "nodes", "--no-headers"],
+            purpose: "Read Kubernetes node metrics",
+            issues: &issues
+        )
+        if let nodeRun {
+            runs.append(nodeRun)
+            if nodeRun.succeeded {
+                metrics += parseNodeMetrics(nodeRun.standardOutput)
+            } else {
+                issues.append(issue(for: nodeRun, title: "Kubernetes node metrics unavailable", severity: .info))
+            }
+        }
+
+        let podRun = await runKubectl(
+            context: context,
+            arguments: ["top", "pods", "--all-namespaces", "--no-headers"],
+            purpose: "Read Kubernetes pod metrics",
+            issues: &issues
+        )
+        if let podRun {
+            runs.append(podRun)
+            if podRun.succeeded {
+                metrics += parsePodMetrics(podRun.standardOutput)
+            } else {
+                issues.append(issue(for: podRun, title: "Kubernetes pod metrics unavailable", severity: .info))
+            }
+        }
+        return (metrics, issues, runs)
     }
 
     private func collectString(
@@ -264,7 +358,7 @@ struct LiveKubernetesResourceService: KubernetesResourceProviding {
         )
     }
 
-    private static func metadata(_ object: [String: Any]) -> KubernetesObjectMetadata {
+    nonisolated private static func metadata(_ object: [String: Any]) -> KubernetesObjectMetadata {
         let metadata = object.dictionary("metadata")
         return KubernetesObjectMetadata(
             name: metadata.string("name"),
@@ -275,7 +369,7 @@ struct LiveKubernetesResourceService: KubernetesResourceProviding {
         )
     }
 
-    private static func node(_ object: [String: Any]) -> KubernetesNodeResource? {
+    nonisolated private static func node(_ object: [String: Any]) -> KubernetesNodeResource? {
         let metadata = metadata(object)
         guard !metadata.name.isEmpty else { return nil }
         let status = object.dictionary("status")
@@ -301,13 +395,13 @@ struct LiveKubernetesResourceService: KubernetesResourceProviding {
         )
     }
 
-    private static func namespace(_ object: [String: Any]) -> KubernetesNamespaceResource? {
+    nonisolated private static func namespace(_ object: [String: Any]) -> KubernetesNamespaceResource? {
         let metadata = metadata(object)
         guard !metadata.name.isEmpty else { return nil }
         return KubernetesNamespaceResource(metadata: metadata, phase: object.dictionary("status").string("phase"))
     }
 
-    private static func pod(_ object: [String: Any]) -> KubernetesPodResource? {
+    nonisolated private static func pod(_ object: [String: Any]) -> KubernetesPodResource? {
         let metadata = metadata(object)
         guard !metadata.name.isEmpty else { return nil }
         let spec = object.dictionary("spec")
@@ -331,7 +425,7 @@ struct LiveKubernetesResourceService: KubernetesResourceProviding {
         )
     }
 
-    private static func service(_ object: [String: Any]) -> KubernetesServiceResource? {
+    nonisolated private static func service(_ object: [String: Any]) -> KubernetesServiceResource? {
         let metadata = metadata(object)
         guard !metadata.name.isEmpty else { return nil }
         let spec = object.dictionary("spec")
@@ -349,7 +443,7 @@ struct LiveKubernetesResourceService: KubernetesResourceProviding {
         )
     }
 
-    private static func deployment(_ object: [String: Any]) -> KubernetesDeploymentResource? {
+    nonisolated private static func deployment(_ object: [String: Any]) -> KubernetesDeploymentResource? {
         let metadata = metadata(object)
         guard !metadata.name.isEmpty else { return nil }
         let spec = object.dictionary("spec")
@@ -393,9 +487,9 @@ struct LiveKubernetesResourceService: KubernetesResourceProviding {
         }
     }
 
-    private static func parseDate(_ value: String) -> Date? {
+    nonisolated private static func parseDate(_ value: String) -> Date? {
         guard !value.isEmpty else { return nil }
-        return timestampFormatter.date(from: value)
+        return ISO8601DateFormatter().date(from: value)
     }
 }
 

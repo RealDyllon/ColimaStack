@@ -66,7 +66,7 @@ struct LiveColimaCLI: ColimaCLI {
         toolLocator: ToolLocator = LiveToolLocator(),
         fileManager: FileManager = .default,
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        executionMode: ExecutionMode = .env
+        executionMode: ExecutionMode = .resolvedPath
     ) {
         self.processRunner = AsyncProcessRunnerAdapter(processRunner: processRunner)
         self.toolLocator = toolLocator
@@ -83,9 +83,9 @@ struct LiveColimaCLI: ColimaCLI {
         if let kubectlURL = toolURL(named: "kubectl", in: tools) {
             let context = await commandOutput(executableURL: kubectlURL, arguments: ["config", "current-context"], timeout: 5)
             if !context.output.isEmpty {
-                messages.append("Kubernetes context: \(context.output)")
+                messages.append(EnvironmentRedactor.redacted("Kubernetes context: \(context.output)"))
             } else if let error = context.error {
-                messages.append("Kubernetes context unavailable: \(error)")
+                messages.append(EnvironmentRedactor.redacted("Kubernetes context unavailable: \(error)"))
             }
         }
         return DiagnosticReport(tools: tools, colima: colimaStatus, docker: dockerStatus, messages: messages)
@@ -98,6 +98,7 @@ struct LiveColimaCLI: ColimaCLI {
     }
 
     func status(profile: String) async throws -> ColimaStatusDetail {
+        try validateProfileName(profile)
         let entry = try await run(.status(profile: profile))
         let output = entry.combinedOutput
         if entry.terminationStatus != 0 && !output.lowercased().contains("not running") {
@@ -107,6 +108,7 @@ struct LiveColimaCLI: ColimaCLI {
     }
 
     func logs(profile: String) async throws -> String {
+        try validateProfileName(profile)
         let logURL = ColimaPaths.daemonLog(profile: profile, environment: environment, fileManager: fileManager)
         if let contents = try? String(contentsOf: logURL, encoding: .utf8) {
             return contents
@@ -115,7 +117,7 @@ struct LiveColimaCLI: ColimaCLI {
     }
 
     func start(_ configuration: ProfileConfiguration) async throws -> ProcessResult {
-        let validationErrors = configuration.validationErrors
+        let validationErrors = await configuration.validationErrorsCheckingFilesystem(fileManager: fileManager)
         guard validationErrors.isEmpty else {
             throw ColimaCLIError.unexpectedOutput(command: "profile validation", details: validationErrors.joined(separator: "\n"), rawOutput: "")
         }
@@ -166,24 +168,28 @@ struct LiveColimaCLI: ColimaCLI {
     }
 
     func stop(profile: String) async throws -> ProcessResult {
+        try validateProfileName(profile)
         let entry = try await run(.stop(ColimaStopRequest(profileName: profile, force: false)))
         try requireSuccess(entry)
         return entry.processResult
     }
 
     func restart(profile: String) async throws -> ProcessResult {
+        try validateProfileName(profile)
         let entry = try await run(.restart(ColimaRestartRequest(profileName: profile, force: false)))
         try requireSuccess(entry)
         return entry.processResult
     }
 
     func delete(profile: String) async throws -> ProcessResult {
+        try validateProfileName(profile)
         let entry = try await run(.delete(ColimaDeleteRequest(profileName: profile, force: true)))
         try requireSuccess(entry)
         return entry.processResult
     }
 
     func kubernetes(profile: String, enabled: Bool) async throws -> ProcessResult {
+        try validateProfileName(profile)
         let action: ColimaKubernetesAction = enabled ? .start : .stop
         let entry = try await run(.kubernetes(ColimaKubernetesRequest(profileName: profile, action: action)))
         try requireSuccess(entry)
@@ -191,6 +197,7 @@ struct LiveColimaCLI: ColimaCLI {
     }
 
     func update(profile: String) async throws -> ProcessResult {
+        try validateProfileName(profile)
         let entry = try await run(.update(profile: profile))
         try requireSuccess(entry)
         return entry.processResult
@@ -201,6 +208,7 @@ struct LiveColimaCLI: ColimaCLI {
     }
 
     func configuration(profile: String) async throws -> ProfileConfiguration? {
+        try validateProfileName(profile)
         let url = configurationPaths(for: profile).profileConfiguration
         guard fileManager.fileExists(atPath: url.path) else { return nil }
         let contents: String
@@ -219,11 +227,13 @@ struct LiveColimaCLI: ColimaCLI {
     }
 
     func profileConfigurationDocument(profile: String) throws -> ColimaDocument {
+        try validateProfileName(profile)
         let paths = configurationPaths(for: profile)
         return try readDocument(kind: .profileConfiguration, url: paths.profileConfiguration, profileName: profile)
     }
 
     func sshConfigurationDocument(profile: String, layer: Bool? = nil) async throws -> ColimaDocument {
+        try validateProfileName(profile)
         let entry = try await run(.sshConfiguration(profile: profile, layer: layer))
         try requireSuccess(entry)
         let paths = configurationPaths(for: profile)
@@ -240,12 +250,14 @@ struct LiveColimaCLI: ColimaCLI {
     }
 
     func editTemplate(_ request: ColimaEditRequest) async throws -> ProcessResult {
+        try validateProfileName(request.profileName)
         let entry = try await run(.template(request))
         try requireSuccess(entry)
         return entry.processResult
     }
 
     func editProfileConfiguration(_ request: ColimaEditRequest) async throws -> ProcessResult {
+        try validateProfileName(request.profileName)
         let startRequest = ColimaStartRequest(
             profileName: request.profileName,
             runtime: nil,
@@ -271,6 +283,7 @@ struct LiveColimaCLI: ColimaCLI {
     }
 
     func ssh(_ request: ColimaSSHRequest) async throws -> ProcessResult {
+        try validateProfileName(request.profileName)
         let entry = try await run(.ssh(request))
         try requireSuccess(entry)
         return entry.processResult
@@ -301,13 +314,13 @@ struct LiveColimaCLI: ColimaCLI {
 
             return ColimaCommandLogEntry(
                 executablePath: result.executableURL.path,
-                arguments: result.arguments,
-                environmentOverrides: result.environment,
+                arguments: EnvironmentRedactor.redacted(result.arguments),
+                environmentOverrides: EnvironmentRedactor.redacted(result.environment),
                 launchedAt: result.launchedAt,
                 duration: result.duration,
                 terminationStatus: result.terminationStatus,
-                standardOutput: result.standardOutput,
-                standardError: result.standardError
+                standardOutput: EnvironmentRedactor.redacted(result.standardOutput),
+                standardError: EnvironmentRedactor.redacted(result.standardError)
             )
         } catch let error as ToolLocatorError {
             switch error {
@@ -317,8 +330,10 @@ struct LiveColimaCLI: ColimaCLI {
                 }
                 throw ColimaCLIError.missingTool(name: name, searchPaths: searchPaths)
             }
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
-            throw ColimaCLIError.processFailure(underlying: error.localizedDescription)
+            throw ColimaCLIError.processFailure(underlying: EnvironmentRedactor.redacted(error.localizedDescription))
         }
     }
 
@@ -337,6 +352,12 @@ struct LiveColimaCLI: ColimaCLI {
         var environment = overrides
         environment["PATH"] = searchPath
         return environment
+    }
+
+    private func validateProfileName(_ profile: String) throws {
+        if let error = ProfileNameValidator.validationError(for: profile) {
+            throw ColimaCLIError.unexpectedOutput(command: "profile validation", details: error, rawOutput: "")
+        }
     }
 
     private func failure(for entry: ColimaCommandLogEntry) -> ColimaCLIError {
@@ -380,10 +401,10 @@ struct LiveColimaCLI: ColimaCLI {
 
         let output = result.combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard result.terminationStatus == 0 else {
-            return ToolCheck(id: toolName, availability: .error([toolURL.path, output].filter { !$0.isEmpty }.joined(separator: " - ")))
+            return ToolCheck(id: toolName, availability: .error(EnvironmentRedactor.redacted([toolURL.path, output].filter { !$0.isEmpty }.joined(separator: " - "))))
         }
 
-        return ToolCheck(id: toolName, availability: .available(path: toolURL.path, version: displayVersion(for: toolName, output: output)))
+        return ToolCheck(id: toolName, availability: .available(path: toolURL.path, version: EnvironmentRedactor.redacted(displayVersion(for: toolName, output: output))))
     }
 
     private func colimaRuntimeStatus(from tools: [ToolCheck]) async -> ColimaRuntimeStatus {
@@ -400,7 +421,7 @@ struct LiveColimaCLI: ColimaCLI {
             let error = entry.terminationStatus == 0 ? "" : output
             return ColimaRuntimeStatus(profileName: profile, state: state, output: output, error: error)
         } catch {
-            return ColimaRuntimeStatus(profileName: profile, state: .unknown, output: "", error: error.localizedDescription)
+            return ColimaRuntimeStatus(profileName: profile, state: .unknown, output: "", error: EnvironmentRedactor.redacted(error.localizedDescription))
         }
     }
 
@@ -446,20 +467,20 @@ struct LiveColimaCLI: ColimaCLI {
             let result = try await processRunner.run(ProcessRequest(executableURL: executableURL, arguments: arguments, timeout: timeout))
             let output = result.combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
             guard result.terminationStatus == 0 else {
-                return (output, output.isEmpty ? "Exited with status \(result.terminationStatus)" : output)
+                return (EnvironmentRedactor.redacted(output), output.isEmpty ? "Exited with status \(result.terminationStatus)" : EnvironmentRedactor.redacted(output))
             }
-            return (output, nil)
+            return (EnvironmentRedactor.redacted(output), nil)
         } catch {
-            return ("", error.localizedDescription)
+            return ("", EnvironmentRedactor.redacted(error.localizedDescription))
         }
     }
 
     private func resolvedProfileName(_ explicit: String?) -> String {
         if let explicit, !explicit.isEmpty {
-            return explicit
+            return ProfileNameValidator.isValid(explicit) ? explicit : "default"
         }
         if let envProfile = environment["COLIMA_PROFILE"], !envProfile.isEmpty {
-            return envProfile
+            return ProfileNameValidator.isValid(envProfile) ? envProfile : "default"
         }
         return "default"
     }
@@ -559,7 +580,7 @@ private struct ColimaCommand: Sendable {
             args += ["--editor", editor]
         }
         args += request.additionalArguments
-        return ColimaCommand(arguments: args, environment: ["COLIMA_PROFILE": request.profileName], timeout: 60)
+        return ColimaCommand(arguments: args, environment: ["COLIMA_PROFILE": request.profileName], timeout: 300)
     }
 
     static func stop(_ request: ColimaStopRequest) -> ColimaCommand {
@@ -567,7 +588,7 @@ private struct ColimaCommand: Sendable {
         if request.force {
             args.append("--force")
         }
-        return ColimaCommand(arguments: args, environment: ["COLIMA_PROFILE": request.profileName], timeout: nil)
+        return ColimaCommand(arguments: args, environment: ["COLIMA_PROFILE": request.profileName], timeout: 120)
     }
 
     static func restart(_ request: ColimaRestartRequest) -> ColimaCommand {
@@ -575,7 +596,7 @@ private struct ColimaCommand: Sendable {
         if request.force {
             args.append("--force")
         }
-        return ColimaCommand(arguments: args, environment: ["COLIMA_PROFILE": request.profileName], timeout: nil)
+        return ColimaCommand(arguments: args, environment: ["COLIMA_PROFILE": request.profileName], timeout: 180)
     }
 
     static func delete(_ request: ColimaDeleteRequest) -> ColimaCommand {
@@ -583,7 +604,7 @@ private struct ColimaCommand: Sendable {
         if request.force {
             args.append("--force")
         }
-        return ColimaCommand(arguments: args, environment: ["COLIMA_PROFILE": request.profileName], timeout: nil)
+        return ColimaCommand(arguments: args, environment: ["COLIMA_PROFILE": request.profileName], timeout: 120)
     }
 
     static func logs(profile: String) -> ColimaCommand {
@@ -591,7 +612,7 @@ private struct ColimaCommand: Sendable {
     }
 
     static func kubernetes(_ request: ColimaKubernetesRequest) -> ColimaCommand {
-        ColimaCommand(arguments: ["kubernetes", request.action.rawValue], environment: ["COLIMA_PROFILE": request.profileName], timeout: 30)
+        ColimaCommand(arguments: ["kubernetes", request.action.rawValue], environment: ["COLIMA_PROFILE": request.profileName], timeout: 180)
     }
 
     static func sshConfiguration(profile: String, layer: Bool?) -> ColimaCommand {
@@ -623,7 +644,7 @@ private struct ColimaCommand: Sendable {
     }
 
     static func update(profile: String) -> ColimaCommand {
-        ColimaCommand(arguments: ["update"], environment: ["COLIMA_PROFILE": profile], timeout: nil)
+        ColimaCommand(arguments: ["update"], environment: ["COLIMA_PROFILE": profile], timeout: 180)
     }
 }
 
@@ -655,6 +676,7 @@ private struct ColimaConfigurationParser {
         configuration.name = profileName
         var section: String?
         var currentMount: MountConfiguration?
+        var pendingList: (section: String?, key: String)?
 
         func finishMount() {
             if let mount = currentMount {
@@ -672,11 +694,13 @@ private struct ColimaConfigurationParser {
             if indent == 0, trimmed.hasSuffix(":") {
                 finishMount()
                 section = String(trimmed.dropLast()).lowercased()
+                pendingList = nil
                 continue
             }
 
             if section == "mounts", trimmed.hasPrefix("-") {
                 finishMount()
+                pendingList = nil
                 let value = trimmed.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
                 currentMount = MountConfiguration(localPath: "", vmPath: "", writable: true)
                 if let pair = keyValue(value), pair.key == "location" {
@@ -685,7 +709,13 @@ private struct ColimaConfigurationParser {
                 continue
             }
 
+            if let list = pendingList, trimmed.hasPrefix("-") {
+                appendListValue(unquoted(String(trimmed.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)), to: list, configuration: &configuration)
+                continue
+            }
+
             guard let pair = keyValue(trimmed) else { continue }
+            pendingList = nil
             if section == "mounts" {
                 if currentMount == nil {
                     currentMount = MountConfiguration(localPath: "", vmPath: "", writable: true)
@@ -730,6 +760,7 @@ private struct ColimaConfigurationParser {
                 configuration.kubernetes.version = pair.value
             case ("kubernetes", "k3sargs"), ("kubernetes", "k3s_args"):
                 configuration.k3sArgs = list(pair.value)
+                if pair.value.isEmpty { pendingList = (section, pair.key) }
             case ("kubernetes", "k3slistenport"), ("kubernetes", "k3s_listen_port"):
                 configuration.k3sListenPort = Int(pair.value)
             case ("network", "address"):
@@ -740,6 +771,7 @@ private struct ColimaConfigurationParser {
                 configuration.network.interface = pair.value
             case ("network", "dns"), ("dns", _):
                 configuration.network.dnsResolvers = list(pair.value)
+                if pair.value.isEmpty { pendingList = (section, pair.key) }
             default:
                 continue
             }
@@ -751,7 +783,11 @@ private struct ColimaConfigurationParser {
 
     private func keyValue(_ line: String) -> (key: String, value: String)? {
         guard let separator = line.firstIndex(of: ":") else { return nil }
-        let key = String(line[..<separator]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased().filter { $0.isLetter || $0.isNumber || $0 == "_" }
+        let key = String(line[..<separator])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+            .filter { $0.isLetter || $0.isNumber || $0 == "_" }
         let rawValue = String(line[line.index(after: separator)...]).trimmingCharacters(in: .whitespacesAndNewlines)
         return (key, unquoted(rawValue))
     }
@@ -786,6 +822,18 @@ private struct ColimaConfigurationParser {
             .split(separator: ",")
             .map { unquoted($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
             .filter { !$0.isEmpty }
+    }
+
+    private func appendListValue(_ value: String, to list: (section: String?, key: String), configuration: inout ProfileConfiguration) {
+        guard !value.isEmpty else { return }
+        switch (list.section, list.key) {
+        case ("kubernetes", "k3sargs"), ("kubernetes", "k3s_args"):
+            configuration.k3sArgs.append(value)
+        case ("network", "dns"), ("dns", _):
+            configuration.network.dnsResolvers.append(value)
+        default:
+            break
+        }
     }
 }
 

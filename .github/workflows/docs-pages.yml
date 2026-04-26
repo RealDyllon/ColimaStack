@@ -1,0 +1,72 @@
+# GitHub Pages enablement:
+# 1. Push this repository to GitHub.
+# 2. In the GitHub repository, open Settings -> Pages.
+# 3. Set Build and deployment -> Source to "GitHub Actions".
+# 4. Ensure Actions are enabled for the repository, then push to the main branch.
+# 5. The docs will publish to https://<owner>.github.io/<repo>/.
+#    If the repo is named <owner>.github.io, GitHub publishes it at https://<owner>.github.io/.
+
+name: Deploy Docs to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/**
+      - .github/workflows/docs-pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.10.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build docs
+        run: pnpm build
+        env:
+          GITHUB_PAGES: 'true'
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/dist
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

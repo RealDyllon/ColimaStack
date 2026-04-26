@@ -97,6 +97,19 @@ cd docs
 pnpm build
 ```
 
+## Releases
+
+App CI runs from [`.github/workflows/app-release.yml`](.github/workflows/app-release.yml). Pull requests and pushes to `main` run unit tests, build the macOS app, then upload the packaged `.app` zip as a workflow artifact.
+
+Release builds publish the same zip and its SHA-256 checksum to a GitHub Release. Create a release by pushing a version tag:
+
+```sh
+git tag v0.0.1
+git push origin v0.0.1
+```
+
+You can also run the workflow manually from GitHub Actions and provide a `x.y.z` version number. The app version comes from `MARKETING_VERSION`, which starts at `0.0.1`; CI uses the GitHub Actions run number as `CURRENT_PROJECT_VERSION` unless a manual numeric build number is supplied. The GitHub-built artifact is unsigned until Developer ID signing secrets are added to the workflow.
+
 ## How It Works
 
 ColimaStack is a local-first macOS app. It calls the Colima CLI for profile lifecycle operations, uses Docker CLI JSON output for runtime inventory, reads Kubernetes state through `kubectl`, and loads selected Colima files such as profile configuration, SSH config, and daemon logs.

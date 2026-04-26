@@ -129,6 +129,16 @@ struct ColimaParserTests {
         let profiles = try ColimaOutputParser().parseList(output)
         #expect(profiles.isEmpty)
     }
+
+    @Test func rejectsUnsafeProfileNamesFromListOutput() throws {
+        let output = """
+        {"name":"../secrets","status":"Running","runtime":"docker"}
+        """
+
+        #expect(throws: ColimaOutputParserError.unsafeProfileName("../secrets")) {
+            _ = try ColimaOutputParser().parseList(output)
+        }
+    }
 }
 
 @MainActor
@@ -161,11 +171,12 @@ struct ColimaCLITests {
         let profiles = try await cli.listProfiles()
 
         #expect(profiles.map(\.name) == ["default"])
-        #expect(runner.requests.map { $0.arguments.joined(separator: " ") }.contains("colima list --json"))
+        #expect(runner.requests.map { $0.arguments.joined(separator: " ") }.contains("list --json"))
+        #expect(runner.requests.last?.executableURL.path == "/opt/homebrew/bin/colima")
     }
 
     @Test func colimaCommandsReceiveResolvedToolSearchPath() async throws {
-        let runner = FakeProcessRunner()
+        let runner = FakeProcessRunner(allowUnmatchedSuccess: true)
         let cli = LiveColimaCLI(
             processRunner: runner,
             toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")])
@@ -174,6 +185,42 @@ struct ColimaCLITests {
         _ = try await cli.listProfiles()
 
         #expect(runner.requests.last?.environment["PATH"] == "/opt/homebrew/bin:/usr/local/bin")
+    }
+
+    @Test func processFailuresRedactSensitiveArguments() async throws {
+        let runner = ThrowingProcessRunner(
+            error: ProcessRunnerError.timedOut(
+                executablePath: "/opt/homebrew/bin/colima",
+                arguments: ["start", "--token", "hunter2", "API_TOKEN=abc123"],
+                timeout: 1
+            )
+        )
+        let cli = LiveColimaCLI(
+            processRunner: runner,
+            toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")])
+        )
+
+        do {
+            _ = try await cli.listProfiles()
+            Issue.record("Expected listProfiles to fail")
+        } catch {
+            let message = error.localizedDescription
+            #expect(message.contains("--token <redacted>"))
+            #expect(message.contains("API_TOKEN=<redacted>"))
+            #expect(!message.contains("hunter2"))
+            #expect(!message.contains("abc123"))
+        }
+    }
+
+    @Test func processCancellationPropagatesWithoutProcessFailureWrapping() async {
+        let cli = LiveColimaCLI(
+            processRunner: ThrowingProcessRunner(error: CancellationError()),
+            toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")])
+        )
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await cli.listProfiles()
+        }
     }
 
     @Test func diagnosticsReportStoppedColimaSeparatelyFromInstalledCLI() async throws {
@@ -309,8 +356,34 @@ struct ColimaCLITests {
             toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")])
         )
 
-        await #expect(throws: ColimaCLIError.commandFailed(command: "/usr/bin/env colima status --json", exitStatus: 2, stdout: "", stderr: "permission denied")) {
+        await #expect(throws: ColimaCLIError.commandFailed(command: "/opt/homebrew/bin/colima status --json", exitStatus: 2, stdout: "", stderr: "permission denied")) {
             _ = try await cli.status(profile: "dev")
+        }
+    }
+
+    @Test func commandFailureRedactsSensitiveArguments() async throws {
+        let runner = FakeProcessRunner(
+            fallbackResult: ProcessResult(
+                request: ProcessRequest(arguments: []),
+                exitCode: 1,
+                stdout: "",
+                stderr: "failed"
+            )
+        )
+        let cli = LiveColimaCLI(
+            processRunner: runner,
+            toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")])
+        )
+        var config = ProfileConfiguration.default
+        config.additionalArgs = ["--token", "hunter2"]
+
+        do {
+            _ = try await cli.start(config)
+            Issue.record("Expected start to fail")
+        } catch {
+            let message = error.localizedDescription
+            #expect(message.contains("--token <redacted>"))
+            #expect(!message.contains("hunter2"))
         }
     }
 
@@ -320,7 +393,7 @@ struct ColimaCLITests {
         try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "daemon ready".write(to: logURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: root) }
-        let runner = FakeProcessRunner()
+        let runner = FakeProcessRunner(allowUnmatchedSuccess: true)
         let cli = LiveColimaCLI(
             processRunner: runner,
             toolLocator: FakeToolLocator(urls: [:]),
@@ -349,7 +422,9 @@ struct ColimaCLITests {
         kubernetes:
           enabled: true
           version: v1.30.4+k3s1
-          k3sArgs: ["--disable=traefik"]
+          k3sArgs:
+            - "--disable=traefik"
+            - "--disable=servicelb"
           k3sListenPort: 6443
         network:
           address: true
@@ -375,7 +450,7 @@ struct ColimaCLITests {
         #expect(configuration.vmType == .vz)
         #expect(configuration.mountType == .virtiofs)
         #expect(configuration.kubernetes.enabled)
-        #expect(configuration.k3sArgs == ["--disable=traefik"])
+        #expect(configuration.k3sArgs == ["--disable=traefik", "--disable=servicelb"])
         #expect(configuration.k3sListenPort == 6443)
         #expect(configuration.network.mode == "bridged")
         #expect(configuration.mounts.first?.commandValue == "/Users/me/src:/src:w")
@@ -388,7 +463,7 @@ struct ColimaCLITests {
         try "cpu: 4\nmemory: 8\n".write(to: templateURL, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: root) }
 
-        let runner = FakeProcessRunner()
+        let runner = FakeProcessRunner(allowUnmatchedSuccess: true)
         let cli = LiveColimaCLI(
             processRunner: runner,
             toolLocator: FakeToolLocator(urls: [:]),
@@ -423,6 +498,49 @@ struct ColimaCLITests {
         #expect(document.lastModified != nil)
     }
 
+    @Test func rejectsUnsafeProfileNamesBeforePathUseOrProcessExecution() async {
+        let runner = FakeProcessRunner(allowUnmatchedSuccess: true)
+        let cli = LiveColimaCLI(
+            processRunner: runner,
+            toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")])
+        )
+
+        await #expect(throws: ColimaCLIError.self) {
+            _ = try await cli.status(profile: "../secrets")
+        }
+        #expect(throws: ColimaCLIError.self) {
+            _ = try cli.profileConfigurationDocument(profile: "../secrets")
+        }
+        #expect(runner.requests.isEmpty)
+    }
+
+    @Test func unsafeEnvironmentProfileFallsBackToDefaultForDiagnostics() async {
+        let runner = FakeProcessRunner(results: [
+            "version": ProcessResult(
+                request: ProcessRequest(arguments: ["colima", "version"]),
+                exitCode: 0,
+                stdout: "colima version 0.10.1",
+                stderr: ""
+            ),
+            "colima status --json": ProcessResult(
+                request: ProcessRequest(arguments: ["colima", "status", "--json"], environment: ["COLIMA_PROFILE": "default"]),
+                exitCode: 1,
+                stdout: "",
+                stderr: "colima is not running"
+            )
+        ])
+        let cli = LiveColimaCLI(
+            processRunner: runner,
+            toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")]),
+            environment: ["COLIMA_PROFILE": "../secrets"]
+        )
+
+        let diagnostics = await cli.diagnostics()
+
+        #expect(diagnostics.colima.profileName == "default")
+        #expect(runner.requests.contains { $0.environment["COLIMA_PROFILE"] == "default" })
+    }
+
     @Test func sshConfigurationDocumentPrefersCLIOutput() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let sshConfigURL = root.appendingPathComponent("ssh_config")
@@ -454,7 +572,7 @@ struct ColimaCLITests {
     }
 
     @Test func editCommandsUseExpectedArguments() async throws {
-        let runner = FakeProcessRunner()
+        let runner = FakeProcessRunner(allowUnmatchedSuccess: true)
         let cli = LiveColimaCLI(
             processRunner: runner,
             toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")])
@@ -466,9 +584,9 @@ struct ColimaCLITests {
 
         let commands = runner.requests.map { $0.arguments.joined(separator: " ") }
         #expect(commands == [
-            "colima template --editor code",
-            "colima start --edit --editor zed",
-            "colima ssh --layer=false -- docker ps"
+            "template --editor code",
+            "start --edit --editor zed",
+            "ssh --layer=false -- docker ps"
         ])
         #expect(runner.requests[0].environment["COLIMA_PROFILE"] == "default")
         #expect(runner.requests[1].environment["COLIMA_PROFILE"] == "dev")
@@ -476,7 +594,7 @@ struct ColimaCLITests {
     }
 
     @Test func invalidStartConfigurationThrowsBeforeProcessExecution() async {
-        let runner = FakeProcessRunner()
+        let runner = FakeProcessRunner(allowUnmatchedSuccess: true)
         let cli = LiveColimaCLI(
             processRunner: runner,
             toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")])
@@ -484,14 +602,14 @@ struct ColimaCLITests {
         var config = ProfileConfiguration.default
         config.name = "bad name"
 
-        await #expect(throws: ColimaCLIError.unexpectedOutput(command: "profile validation", details: "Profile name cannot contain spaces.", rawOutput: "")) {
+        await #expect(throws: ColimaCLIError.self) {
             _ = try await cli.start(config)
         }
         #expect(runner.requests.isEmpty)
     }
 
     @Test func defaultStartOmitsHostArchSharedNetworkAndBlankValues() async throws {
-        let runner = FakeProcessRunner()
+        let runner = FakeProcessRunner(allowUnmatchedSuccess: true)
         let cli = LiveColimaCLI(
             processRunner: runner,
             toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")])
@@ -515,22 +633,23 @@ struct ColimaCLITests {
     }
 
     @Test func startBuildsExpectedCommand() async throws {
-        let runner = FakeProcessRunner(results: [
-            "colima start --runtime containerd --vm-type vz --arch aarch64 --cpus 6 --memory 12 --disk 120 --mount-type virtiofs --mount /Users/me/src:/src:w --dns 1.1.1.1 --kubernetes=true --kubernetes-version v1.30.4+k3s1 --network-address=true --port-forwarder grpc --network-mode bridged --network-interface en0 --k3s-arg --disable=traefik --k3s-listen-port 6443":
-                ProcessResult(request: ProcessRequest(arguments: []), exitCode: 0, stdout: "ok", stderr: "")
-        ])
+        let runner = FakeProcessRunner(allowUnmatchedSuccess: true)
         let cli = LiveColimaCLI(
             processRunner: runner,
             toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")])
         )
+        let mountURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("colima-stack-start-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: mountURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: mountURL) }
         var config = ProfileConfiguration.default
         config.name = "dev"
         config.resources = ResourceAllocation(cpu: 6, memoryGiB: 12, diskGiB: 120)
         config.runtime = .containerd
         config.vmType = .vz
-        config.architecture = .aarch64
+        config.architecture = .x86_64
         config.mountType = .virtiofs
-        config.mounts = [MountConfiguration(localPath: "/Users/me/src", vmPath: "/src", writable: true)]
+        config.mounts = [MountConfiguration(localPath: mountURL.path, vmPath: "/src", writable: true)]
         config.network = NetworkConfiguration(networkAddress: true, mode: "bridged", interface: "en0", dnsResolvers: ["1.1.1.1"])
         config.portForwarder = .grpc
         config.rosetta = true
@@ -553,7 +672,7 @@ struct ColimaCLITests {
     }
 
     @Test func nonStartCommandsUseExpectedSubcommandsAndProfileEnvironment() async throws {
-        let runner = FakeProcessRunner()
+        let runner = FakeProcessRunner(allowUnmatchedSuccess: true)
         let cli = LiveColimaCLI(
             processRunner: runner,
             toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")])
@@ -568,14 +687,147 @@ struct ColimaCLITests {
 
         let commands = runner.requests.map { $0.arguments.joined(separator: " ") }
         #expect(commands == [
-            "colima stop",
-            "colima restart",
-            "colima delete --force",
-            "colima update",
-            "colima kubernetes start",
-            "colima kubernetes stop"
+            "stop",
+            "restart",
+            "delete --force",
+            "update",
+            "kubernetes start",
+            "kubernetes stop"
         ])
+        #expect(runner.requests[4].timeout == 180)
+        #expect(runner.requests[5].timeout == 180)
         #expect(runner.requests.allSatisfy { $0.environment["COLIMA_PROFILE"] == "dev" })
+    }
+}
+
+struct CommandRunServiceTests {
+    @Test func liveCommandRunnerUsesResolvedToolPathByDefaultAndRedactsSecrets() async throws {
+        let runner = FakeProcessRunner(results: [
+            "ps --password hunter2": ProcessResult(
+                request: ProcessRequest(
+                    executableURL: URL(fileURLWithPath: "/opt/homebrew/bin/docker"),
+                    arguments: ["ps", "--password", "hunter2"],
+                    environment: ["API_TOKEN": "abc123"]
+                ),
+                exitCode: 1,
+                stdout: "TOKEN=abc123 Bearer deadbeef",
+                stderr: #"{"password":"hunter2"}"#
+            )
+        ])
+        let service = LiveCommandRunService(
+            processRunner: AsyncProcessRunnerAdapter(processRunner: runner),
+            toolLocator: FakeToolLocator(urls: ["docker": URL(fileURLWithPath: "/opt/homebrew/bin/docker")])
+        )
+
+        let run = try await service.run(
+            ManagedCommandRequest(
+                toolName: "docker",
+                arguments: ["ps", "--password", "hunter2"],
+                environment: ["API_TOKEN": "abc123"],
+                purpose: "List containers"
+            )
+        )
+
+        #expect(runner.requests.last?.executableURL.path == "/opt/homebrew/bin/docker")
+        #expect(runner.requests.last?.arguments == ["ps", "--password", "hunter2"])
+        #expect(run.commandString == "/opt/homebrew/bin/docker ps --password <redacted>")
+        #expect(run.request.environment["API_TOKEN"] == "<redacted>")
+        #expect(!run.standardOutput.contains("abc123"))
+        #expect(!run.standardOutput.contains("deadbeef"))
+        #expect(!run.standardError.contains("hunter2"))
+    }
+
+    @Test func commandRunnerOnlyForwardsExplicitParentEnvironmentKeys() async throws {
+        let runner = FakeProcessRunner(allowUnmatchedSuccess: true)
+        let service = LiveCommandRunService(
+            processRunner: AsyncProcessRunnerAdapter(processRunner: runner),
+            toolLocator: FakeToolLocator(urls: ["docker": URL(fileURLWithPath: "/opt/homebrew/bin/docker")]),
+            environment: [
+                "COLIMA_HOME": "/tmp/colima-home",
+                "COLIMA_SECRET": "leak-me",
+                "DOCKER_CONTEXT": "colima",
+                "API_TOKEN": "leak-me-too"
+            ]
+        )
+
+        _ = try await service.run(
+            ManagedCommandRequest(
+                toolName: "docker",
+                arguments: ["ps"],
+                purpose: "List containers"
+            )
+        )
+
+        let environment = try #require(runner.requests.last?.environment)
+        #expect(environment["COLIMA_HOME"] == "/tmp/colima-home")
+        #expect(environment["DOCKER_CONTEXT"] == "colima")
+        #expect(environment["COLIMA_SECRET"] == nil)
+        #expect(environment["API_TOKEN"] == nil)
+    }
+
+    @Test func commandRunnerRedactsProcessFailureDescriptions() async throws {
+        let runner = ThrowingProcessRunner(
+            error: ProcessRunnerError.timedOut(
+                executablePath: "/opt/homebrew/bin/docker",
+                arguments: ["login", "--password", "hunter2"],
+                timeout: 1
+            )
+        )
+        let service = LiveCommandRunService(
+            processRunner: AsyncProcessRunnerAdapter(processRunner: runner),
+            toolLocator: FakeToolLocator(urls: ["docker": URL(fileURLWithPath: "/opt/homebrew/bin/docker")])
+        )
+
+        do {
+            _ = try await service.run(
+                ManagedCommandRequest(
+                    toolName: "docker",
+                    arguments: ["login", "--password", "hunter2"],
+                    purpose: "Login"
+                )
+            )
+            Issue.record("Expected command runner to fail")
+        } catch {
+            let message = error.localizedDescription
+            #expect(message.contains("--password <redacted>"))
+            #expect(!message.contains("hunter2"))
+        }
+    }
+
+    @Test func commandRunnerPreservesCancellationErrors() async {
+        let service = LiveCommandRunService(
+            processRunner: AsyncProcessRunnerAdapter(processRunner: ThrowingProcessRunner(error: CancellationError())),
+            toolLocator: FakeToolLocator(urls: ["docker": URL(fileURLWithPath: "/opt/homebrew/bin/docker")])
+        )
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await service.run(
+                ManagedCommandRequest(
+                    toolName: "docker",
+                    arguments: ["ps"],
+                    purpose: "List containers"
+                )
+            )
+        }
+    }
+
+    @Test func fakeProcessRunnerThrowsWhenResultIsMissing() {
+        let runner = FakeProcessRunner()
+
+        #expect(throws: TestError.self) {
+            _ = try runner.run(ProcessRequest(arguments: ["missing"]))
+        }
+    }
+}
+
+struct RedactionTests {
+    @Test func redactsSensitiveEnvironmentArgumentsAndText() {
+        #expect(EnvironmentRedactor.redacted(["API_TOKEN": "abc123"]) == ["API_TOKEN": "<redacted>"])
+        #expect(EnvironmentRedactor.redacted(["--token=abc123", "--password", "hunter2", "USER=dyllon"]) == ["--token=<redacted>", "--password", "<redacted>", "USER=dyllon"])
+        let text = EnvironmentRedactor.redacted(#"TOKEN=abc123 {"password":"hunter2"} Authorization: Bearer deadbeef"#)
+        #expect(!text.contains("abc123"))
+        #expect(!text.contains("hunter2"))
+        #expect(!text.contains("deadbeef"))
     }
 }
 
@@ -596,6 +848,102 @@ struct ToolLocatorTests {
     }
 }
 
+struct ProcessRunnerTests {
+    @Test func liveRunnerDoesNotInheritSensitiveParentEnvironment() throws {
+        let runner = LiveProcessRunner(
+            baseEnvironment: [
+                "HOME": "/tmp/colima-stack-home",
+                "PATH": "/usr/bin:/bin",
+                "SECRET_TOKEN": "must-not-leak"
+            ]
+        )
+
+        let result = try runner.run(
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/usr/bin/env"),
+                environment: ["COLIMA_PROFILE": "dev"]
+            )
+        )
+
+        #expect(result.standardOutput.contains("HOME=/tmp/colima-stack-home"))
+        #expect(result.standardOutput.contains("COLIMA_PROFILE=dev"))
+        #expect(!result.standardOutput.contains("SECRET_TOKEN=must-not-leak"))
+    }
+
+    @Test func liveRunnerWritesStandardInputAfterLaunch() throws {
+        let runner = LiveProcessRunner(baseEnvironment: ["PATH": "/usr/bin:/bin"])
+
+        let result = try runner.run(
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/bin/cat"),
+                standardInput: Data("hello stdin".utf8)
+            )
+        )
+
+        #expect(result.standardOutput == "hello stdin")
+        #expect(result.terminationStatus == 0)
+    }
+
+    @Test func liveRunnerTimesOutWhenChildDoesNotReadLargeStandardInput() throws {
+        let runner = LiveProcessRunner(baseEnvironment: ["PATH": "/usr/bin:/bin"])
+        let startedAt = Date()
+
+        do {
+            _ = try runner.run(
+                ProcessRequest(
+                    executableURL: URL(fileURLWithPath: "/bin/sleep"),
+                    arguments: ["2"],
+                    standardInput: Data(repeating: 120, count: 5 * 1_024 * 1_024),
+                    timeout: 0.2
+                )
+            )
+            Issue.record("Expected large stdin write to time out while child is not reading")
+        } catch ProcessRunnerError.timedOut {
+        } catch {
+            Issue.record("Expected timeout, got \(error)")
+        }
+
+        #expect(Date().timeIntervalSince(startedAt) < 1.5)
+    }
+
+    @Test func liveRunnerCapsCapturedOutput() throws {
+        let runner = LiveProcessRunner(baseEnvironment: ["PATH": "/usr/bin:/bin"], outputLimitBytes: 8)
+
+        let result = try runner.run(
+            ProcessRequest(
+                executableURL: URL(fileURLWithPath: "/bin/sh"),
+                arguments: ["-c", "printf 0123456789abcdef"]
+            )
+        )
+
+        #expect(result.standardOutput.hasPrefix("01234567"))
+        #expect(result.standardOutput.contains("[output truncated; dropped 8 bytes]"))
+        #expect(result.standardOutputTruncated)
+        #expect(!result.standardErrorTruncated)
+    }
+
+    @Test func asyncLiveRunnerCancelsSpawnedProcess() async throws {
+        let runner = AsyncProcessRunnerAdapter(
+            processRunner: LiveProcessRunner(baseEnvironment: ["PATH": "/usr/bin:/bin"])
+        )
+        let task = Task {
+            try await runner.run(
+                ProcessRequest(
+                    executableURL: URL(fileURLWithPath: "/bin/sh"),
+                    arguments: ["-c", "sleep 30"]
+                )
+            )
+        }
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        task.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await task.value
+        }
+    }
+}
+
 @MainActor
 struct ProfileConfigurationTests {
     @Test func validatesProfileConfig() {
@@ -603,8 +951,31 @@ struct ProfileConfigurationTests {
         config.name = "bad name"
         config.resources.cpu = 0
 
-        #expect(config.validationErrors.contains("Profile name cannot contain spaces."))
+        #expect(config.validationErrors.contains("Profile name can only contain letters, numbers, dots, underscores, and hyphens, and must start with a letter or number."))
+        #expect(config.validationErrors.filter { $0.hasPrefix("Profile name") }.count == 1)
         #expect(config.validationErrors.contains("CPU must be at least 1."))
+    }
+
+    @Test func validatesMountExistenceAsynchronously() async {
+        let missingPath = "/tmp/colima-stack-missing-\(UUID().uuidString)"
+        var config = ProfileConfiguration.default
+        config.mounts = [MountConfiguration(localPath: missingPath, vmPath: "/workspace", writable: true)]
+
+        let expectedError = "Mount local path '\(missingPath)' does not exist."
+        #expect(!config.validationErrors.contains(expectedError))
+        #expect(await config.validationErrorsCheckingFilesystem().contains(expectedError))
+    }
+
+    @Test func rejectsManagedAdditionalArguments() {
+        var config = ProfileConfiguration.default
+        config.additionalArgs = ["--profile", "other", "--runtime=docker", " --force", "-p", "-f"]
+
+        #expect(config.validationErrors.contains("Additional CLI arg '--profile' is managed by Colima Stack and cannot be overridden."))
+        #expect(config.validationErrors.contains("Additional CLI arg '--runtime' is managed by Colima Stack and cannot be overridden."))
+        #expect(config.validationErrors.contains("Additional CLI arg '--force' cannot start or end with whitespace."))
+        #expect(config.validationErrors.contains("Additional CLI arg '--force' is managed by Colima Stack and cannot be overridden."))
+        #expect(config.validationErrors.contains("Additional CLI arg '-p' cannot use short flags. Use the explicit long flag form."))
+        #expect(config.validationErrors.contains("Additional CLI arg '-f' cannot use short flags. Use the explicit long flag form."))
     }
 }
 
@@ -728,19 +1099,53 @@ final class FakeToolLocator: ToolLocator {
 
 final class FakeProcessRunner: ProcessRunner {
     var results: [String: ProcessResult]
+    var fallbackResult: ProcessResult?
+    var allowUnmatchedSuccess: Bool
     private(set) var requests: [ProcessRequest] = []
 
-    init(results: [String: ProcessResult] = [:]) {
+    init(results: [String: ProcessResult] = [:], fallbackResult: ProcessResult? = nil, allowUnmatchedSuccess: Bool = false) {
         self.results = results
+        self.fallbackResult = fallbackResult
+        self.allowUnmatchedSuccess = allowUnmatchedSuccess
     }
 
     func run(_ request: ProcessRequest) throws -> ProcessResult {
         requests.append(request)
-        let key = request.arguments.joined(separator: " ")
-        if let result = results[key] {
-            return result
+        let argumentKey = request.arguments.joined(separator: " ")
+        let executableKey = ([request.executableURL.lastPathComponent] + request.arguments).joined(separator: " ")
+        if let result = results[argumentKey] ?? results[executableKey] ?? fallbackResult {
+            return ProcessResult(
+                executableURL: request.executableURL,
+                arguments: request.arguments,
+                environment: request.environment,
+                launchedAt: result.launchedAt,
+                duration: result.duration,
+                terminationStatus: result.terminationStatus,
+                standardOutput: result.standardOutput,
+                standardError: result.standardError,
+                standardOutputTruncated: result.standardOutputTruncated,
+                standardErrorTruncated: result.standardErrorTruncated
+            )
         }
-        return ProcessResult(request: request, exitCode: 0, stdout: "", stderr: "")
+        if allowUnmatchedSuccess {
+            return ProcessResult(request: request, exitCode: 0, stdout: "", stderr: "")
+        }
+        let message = "No fake process result for '\(argumentKey)' or '\(executableKey)'"
+        throw TestError(message: message)
+    }
+}
+
+final class ThrowingProcessRunner: ProcessRunner {
+    let error: Error
+    private(set) var requests: [ProcessRequest] = []
+
+    init(error: Error) {
+        self.error = error
+    }
+
+    func run(_ request: ProcessRequest) throws -> ProcessResult {
+        requests.append(request)
+        throw error
     }
 }
 

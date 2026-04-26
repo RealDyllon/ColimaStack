@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-04-26",
+  "project": "ColimaStack",
+  "releaseGate": "Do not ship for public audit until every item is verified or explicitly deferred with rationale.",
+  "items": [
+    {
+      "id": "AUD-001",
+      "severity": "critical",
+      "area": "tests",
+      "status": "verified",
+      "requirement": "Full Xcode unit and UI test suite passes.",
+      "evidence": "xcodebuild test -project ColimaStack.xcodeproj -scheme ColimaStack -destination platform=macOS -derivedDataPath DerivedData"
+    },
+    {
+      "id": "AUD-002",
+      "severity": "critical",
+      "area": "process-security",
+      "status": "verified",
+      "requirement": "Child processes inherit only an allowlisted environment and explicit command overrides.",
+      "evidence": "LiveProcessRunner and LiveCommandRunService regression tests cover allowlisted inheritance and managed command forwarding."
+    },
+    {
+      "id": "AUD-003",
+      "severity": "high",
+      "area": "process-security",
+      "status": "verified",
+      "requirement": "Managed commands use resolved executable paths by default and command history displays the actual tool name.",
+      "evidence": "CommandRunServiceTests.liveCommandRunnerUsesResolvedToolPathByDefaultAndRedactsSecrets"
+    },
+    {
+      "id": "AUD-004",
+      "severity": "high",
+      "area": "process-security",
+      "status": "verified",
+      "requirement": "stdin is written after process launch, output capture is capped, and cancellation terminates live children.",
+      "evidence": "Process runner regression tests in ColimaStackTests."
+    },
+    {
+      "id": "AUD-005",
+      "severity": "high",
+      "area": "data-protection",
+      "status": "verified",
+      "requirement": "Secrets are redacted from args, env, stdout, stderr, diagnostics, command history, logs, and search index.",
+      "evidence": "RedactionTests, BackendSearchIndexTests, ColimaCLITests.processFailuresRedactSensitiveArguments, and CommandRunServiceTests.commandRunnerRedactsProcessFailureDescriptions."
+    },
+    {
+      "id": "AUD-006",
+      "severity": "high",
+      "area": "profile-safety",
+      "status": "verified",
+      "requirement": "Profile names from user input, environment fallback, and CLI output are validated before path or process use.",
+      "evidence": "ProfileNameValidator and Colima output parser regression tests."
+    },
+    {
+      "id": "AUD-007",
+      "severity": "high",
+      "area": "profile-safety",
+      "status": "verified",
+      "requirement": "Advanced profile args cannot override structured or destructive managed flags.",
+      "evidence": "Profile configuration validation regression tests."
+    },
+    {
+      "id": "AUD-008",
+      "severity": "high",
+      "area": "destructive-actions",
+      "status": "verified",
+      "requirement": "Profile delete uses profile-specific confirmation and requires typed confirmation.",
+      "evidence": "ColimaStackUITests.testDeleteProfileRequiresTypedProfileConfirmation"
+    },
+    {
+      "id": "AUD-009",
+      "severity": "medium",
+      "area": "design-coverage",
+      "status": "partial",
+      "requirement": "Every mockup inventory state is implemented, changed by product decision, or explicitly out of scope.",
+      "evidence": "design/mockups/screen_inventory.md reconciliation matrix.",
+      "remainingWork": "Close or accept Deferred/Partial states before final public audit."
+    },
+    {
+      "id": "AUD-010",
+      "severity": "medium",
+      "area": "verification",
+      "status": "ready",
+      "requirement": "A CI-equivalent local verification script exists for clean Debug build, tests, and unsigned Release build.",
+      "evidence": "scripts/verify-local.sh builds Debug, runs the full Xcode test suite, builds unsigned Release, and prints Release architectures. Direct full Xcode test passed and unsigned Release build passed. In Codex seatbelt sandbox, the script can be interrupted by an Xcode distributed-notification Trace/BPT trap."
+    },
+    {
+      "id": "AUD-011",
+      "severity": "critical",
+      "area": "release",
+      "status": "blocked",
+      "requirement": "Release archive is Developer ID signed, notarized, stapled, and installed on a clean macOS account.",
+      "evidence": "docs/release-readiness.md records missing Developer ID Application identity for team TF835S78NT.",
+      "remainingWork": "Install a valid Developer ID Application certificate/private key, archive, notarize, staple, assess, and smoke-test."
+    },
+    {
+      "id": "AUD-012",
+      "severity": "high",
+      "area": "manual-smoke",
+      "status": "blocked",
+      "requirement": "Default and named-profile live smoke tests pass against real Colima, Docker, and Kubernetes binaries.",
+      "evidence": "Automated tests use fakes by design.",
+      "remainingWork": "Run live smoke tests on the exact Colima/Docker/kubectl versions promoted for launch."
+    }
+  ]
+}

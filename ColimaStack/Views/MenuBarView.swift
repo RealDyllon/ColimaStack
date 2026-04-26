@@ -457,16 +457,14 @@ struct ColimaStackMenuBarMenu: View {
     }
 
     private func portItems(for container: DockerContainerResource) -> [MenuPortItem] {
-        parseHostPorts(container.ports).map { port in
-            let scheme = port == 443 ? "https" : "http"
-            let url = URL(string: "\(scheme)://localhost:\(port)")!
-            return MenuPortItem(id: "\(container.id)-\(port)", title: "\(container.name) - localhost:\(port)", url: url)
+        container.portBindings.compactMap { binding in
+            guard let url = binding.browserURL else { return nil }
+            return MenuPortItem(
+                id: "\(container.id)-\(binding.hostPort)-\(binding.proto)",
+                title: "\(container.name) - localhost:\(binding.hostPort)",
+                url: url
+            )
         }
-    }
-
-    private func parseHostPorts(_ ports: String) -> [Int] {
-        let matches = ports.matches(of: /(?:0\.0\.0\.0|127\.0\.0\.1|\[::\]|::):([0-9]+)->/)
-        return matches.compactMap { Int($0.1) }
     }
 
     private var diagnosticsSummary: String {

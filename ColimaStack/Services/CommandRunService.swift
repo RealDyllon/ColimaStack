@@ -12,7 +12,18 @@ nonisolated struct AsyncProcessRunnerAdapter: AsyncProcessRunning {
     }
 
     func run(_ request: ProcessRequest) async throws -> ProcessResult {
-        try await Task.detached(priority: .utility) {
+        if let cancellableRunner = processRunner as? CancellableProcessRunner {
+            let cancellation = ProcessCancellation()
+            return try await withTaskCancellationHandler {
+                try await Task.detached(priority: .utility) {
+                    try cancellableRunner.run(request, cancellation: cancellation)
+                }.value
+            } onCancel: {
+                cancellation.cancel()
+            }
+        }
+
+        return try await Task.detached(priority: .utility) {
             try processRunner.run(request)
         }.value
     }
@@ -23,6 +34,10 @@ nonisolated protocol CommandRunProviding {
 }
 
 nonisolated struct LiveCommandRunService: CommandRunProviding {
+    private static let forwardedColimaEnvironmentKeys = [
+        "COLIMA_HOME"
+    ]
+
     private static let forwardedEnvironmentKeys = [
         "KUBECONFIG",
         "DOCKER_HOST",
@@ -46,7 +61,7 @@ nonisolated struct LiveCommandRunService: CommandRunProviding {
         processRunner: AsyncProcessRunning = AsyncProcessRunnerAdapter(),
         toolLocator: ToolLocator = LiveToolLocator(),
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        executionMode: LiveColimaCLI.ExecutionMode = .env
+        executionMode: LiveColimaCLI.ExecutionMode = .resolvedPath
     ) {
         self.processRunner = processRunner
         self.toolLocator = toolLocator
@@ -78,24 +93,26 @@ nonisolated struct LiveCommandRunService: CommandRunProviding {
             )
             let result = try await processRunner.run(processRequest)
             var storedRequest = request
-            storedRequest.arguments = result.arguments.dropFirstToolIfNeeded(toolName: request.toolName, executionMode: executionMode)
-            storedRequest.environment = result.environment
+            storedRequest.arguments = EnvironmentRedactor.redacted(result.arguments.dropFirstToolIfNeeded(toolName: request.toolName, executionMode: executionMode))
+            storedRequest.environment = EnvironmentRedactor.redacted(result.environment)
             return ManagedCommandRun(
                 request: storedRequest,
                 executablePath: result.executableURL.path,
                 launchedAt: result.launchedAt,
                 duration: result.duration,
                 terminationStatus: result.terminationStatus,
-                standardOutput: result.standardOutput,
-                standardError: result.standardError
+                standardOutput: EnvironmentRedactor.redacted(result.standardOutput),
+                standardError: EnvironmentRedactor.redacted(result.standardError)
             )
         } catch let error as ToolLocatorError {
             switch error {
             case let .toolNotFound(name, searchPaths):
                 throw ColimaCLIError.missingTool(name: name, searchPaths: searchPaths)
             }
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
-            throw ColimaCLIError.processFailure(underlying: error.localizedDescription)
+            throw ColimaCLIError.processFailure(underlying: EnvironmentRedactor.redacted(error.localizedDescription))
         }
     }
 
@@ -105,8 +122,10 @@ nonisolated struct LiveCommandRunService: CommandRunProviding {
         if !searchPath.isEmpty {
             merged["PATH"] = searchPath
         }
-        for (key, value) in environment where key.hasPrefix("COLIMA_") && merged[key] == nil {
-            merged[key] = value
+        for key in Self.forwardedColimaEnvironmentKeys where merged[key] == nil {
+            if let value = environment[key], !value.isEmpty {
+                merged[key] = value
+            }
         }
         for key in Self.forwardedEnvironmentKeys where merged[key] == nil {
             if let value = environment[key], !value.isEmpty {

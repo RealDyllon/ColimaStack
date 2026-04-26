@@ -149,7 +149,7 @@ struct BackendSearchIndexer: BackendSearchIndexing {
             )
         }
 
-        return BackendSearchIndex(collectedAt: Date(), results: results)
+        return BackendSearchIndex(collectedAt: Date(), results: results.map { $0.redactingSecrets() })
     }
 
     private func issueResults(_ issues: [BackendIssue]) -> [BackendSearchResult] {
@@ -164,6 +164,16 @@ struct BackendSearchIndexer: BackendSearchIndexing {
                 score: 0
             )
         }
+    }
+}
+
+private extension BackendSearchResult {
+    func redactingSecrets() -> BackendSearchResult {
+        var result = self
+        result.title = EnvironmentRedactor.redacted(title)
+        result.subtitle = EnvironmentRedactor.redacted(subtitle)
+        result.tokens = EnvironmentRedactor.redacted(tokens)
+        return result
     }
 }
 
@@ -189,8 +199,8 @@ struct BackendMetricsCollector: MetricsCollecting {
 
         if let kubernetes {
             for metric in kubernetes.metrics {
-                samples.append(ResourceMetricSample(id: "\(metric.id):cpu", kind: .cpu, ownerID: metric.id, ownerName: metric.name, value: numericPrefix(metric.cpu), unit: suffix(metric.cpu), collectedAt: collectedAt))
-                samples.append(ResourceMetricSample(id: "\(metric.id):memory", kind: .memory, ownerID: metric.id, ownerName: metric.name, value: numericPrefix(metric.memory), unit: suffix(metric.memory), collectedAt: collectedAt))
+                samples.append(ResourceMetricSample(id: "\(metric.id):cpu", kind: .cpu, ownerID: metric.id, ownerName: metric.name, value: ResourceQuantityParser.numericPrefix(metric.cpu), unit: suffix(metric.cpu), collectedAt: collectedAt))
+                samples.append(ResourceMetricSample(id: "\(metric.id):memory", kind: .memory, ownerID: metric.id, ownerName: metric.name, value: ResourceQuantityParser.numericPrefix(metric.memory), unit: suffix(metric.memory), collectedAt: collectedAt))
             }
         }
 
@@ -202,8 +212,8 @@ struct BackendMetricsCollector: MetricsCollecting {
         let network = ResourceQuantityParser.bytePair(stats.networkIO)
         let block = ResourceQuantityParser.bytePair(stats.blockIO)
         var samples = [
-            ResourceMetricSample(id: "docker:\(stats.id):cpu", kind: .cpu, ownerID: stats.id, ownerName: stats.name, value: numericPrefix(stats.cpuPercent), unit: "%", collectedAt: collectedAt),
-            ResourceMetricSample(id: "docker:\(stats.id):memory-percent", kind: .memory, ownerID: stats.id, ownerName: stats.name, value: numericPrefix(stats.memoryPercent), unit: "%", collectedAt: collectedAt),
+            ResourceMetricSample(id: "docker:\(stats.id):cpu", kind: .cpu, ownerID: stats.id, ownerName: stats.name, value: ResourceQuantityParser.numericPrefix(stats.cpuPercent), unit: "%", collectedAt: collectedAt),
+            ResourceMetricSample(id: "docker:\(stats.id):memory-percent", kind: .memory, ownerID: stats.id, ownerName: stats.name, value: ResourceQuantityParser.numericPrefix(stats.memoryPercent), unit: "%", collectedAt: collectedAt),
             ResourceMetricSample(id: "docker:\(stats.id):memory-used", kind: .memory, ownerID: stats.id, ownerName: stats.name, value: memory.first, unit: "bytes", collectedAt: collectedAt),
             ResourceMetricSample(id: "docker:\(stats.id):network-receive", kind: .networkReceive, ownerID: stats.id, ownerName: stats.name, value: network.first, unit: "bytes", collectedAt: collectedAt),
             ResourceMetricSample(id: "docker:\(stats.id):network-transmit", kind: .networkTransmit, ownerID: stats.id, ownerName: stats.name, value: network.second, unit: "bytes", collectedAt: collectedAt),
@@ -216,14 +226,8 @@ struct BackendMetricsCollector: MetricsCollecting {
         return samples
     }
 
-    private func numericPrefix(_ value: String) -> Double {
-        let allowed = Set("0123456789.")
-        let prefix = value.prefix { allowed.contains($0) }
-        return Double(prefix) ?? 0
-    }
-
     private func suffix(_ value: String) -> String {
-        let allowed = Set("0123456789.")
+        let allowed = Set("0123456789.,")
         let suffix = value.drop { allowed.contains($0) }
         return suffix.isEmpty ? "count" : String(suffix)
     }

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum WorkspaceTone {
@@ -300,6 +301,12 @@ struct KeyValueGrid: View {
                         .textSelection(.enabled)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .contextMenu {
+                            Button("Copy") {
+                                copyToPasteboard(value)
+                            }
+                            .disabled(value.isEmpty)
+                        }
                 }
             }
         }
@@ -428,6 +435,11 @@ struct RecordRow: View {
             Divider()
                 .padding(.leading, 16)
         }
+        .contextMenu {
+            Button("Copy Row") {
+                copyToPasteboard([leading, secondary, tertiary, trailing].filter { !$0.isEmpty }.joined(separator: "\t"))
+            }
+        }
     }
 }
 
@@ -452,6 +464,11 @@ struct TerminalLogView: View {
         .background(Color(nsColor: .textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
+}
+
+private func copyToPasteboard(_ value: String) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(value, forType: .string)
 }
 
 struct StatusDot: View {

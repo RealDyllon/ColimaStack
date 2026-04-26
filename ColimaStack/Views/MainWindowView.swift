@@ -2,8 +2,11 @@ import SwiftUI
 
 struct MainWindowView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.openSettings) private var openSettings
     @State private var searchText = ""
     @State private var confirmDelete = false
+    @State private var deleteTargetProfile: ColimaProfile?
+    @State private var deleteConfirmationText = ""
 
     var body: some View {
         NavigationSplitView {
@@ -13,7 +16,7 @@ struct MainWindowView: View {
                 .environmentObject(appState)
                 .searchable(text: $searchText, placement: .toolbar, prompt: "Search \(appState.selectedSection.searchScopeLabel)")
         }
-        .frame(minWidth: 1220, minHeight: 780)
+        .frame(minWidth: 900, minHeight: 640)
         .toolbar {
             ToolbarItemGroup {
                 Button {
@@ -22,6 +25,7 @@ struct MainWindowView: View {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .help("Refresh runtime and Kubernetes data")
+                .accessibilityIdentifier("toolbar.refresh")
                 .disabled(appState.isRefreshing)
 
                 Divider()
@@ -32,6 +36,7 @@ struct MainWindowView: View {
                     Label("Start", systemImage: "play.fill")
                 }
                 .help("Start the selected profile")
+                .accessibilityIdentifier("toolbar.start")
                 .disabled(appState.selectedProfile == nil || appState.activeOperation != nil)
 
                 Button {
@@ -40,6 +45,7 @@ struct MainWindowView: View {
                     Label("Stop", systemImage: "stop.fill")
                 }
                 .help("Stop the selected profile")
+                .accessibilityIdentifier("toolbar.stop")
                 .disabled(appState.selectedProfile == nil || appState.activeOperation != nil)
 
                 Button {
@@ -48,14 +54,16 @@ struct MainWindowView: View {
                     Label("Restart", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .help("Restart the selected profile")
+                .accessibilityIdentifier("toolbar.restart")
                 .disabled(appState.selectedProfile == nil || appState.activeOperation != nil)
 
                 Button(role: .destructive) {
-                    confirmDelete = true
+                    beginDeleteConfirmation()
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
                 .help("Delete the selected profile")
+                .accessibilityIdentifier("toolbar.delete")
                 .disabled(appState.selectedProfile == nil || appState.activeOperation != nil)
 
                 Divider()
@@ -65,6 +73,7 @@ struct MainWindowView: View {
                 }
                 .toggleStyle(.button)
                 .help("Toggle automatic refresh")
+                .accessibilityIdentifier("toolbar.autoRefresh")
             }
 
             ToolbarItem {
@@ -83,11 +92,27 @@ struct MainWindowView: View {
         .alert(item: $appState.presentedError) { error in
             Alert(title: Text("ColimaStack"), message: Text(error.message), dismissButton: .default(Text("OK")))
         }
-        .confirmationDialog("Delete profile?", isPresented: $confirmDelete) {
-            Button("Delete", role: .destructive) {
-                Task { await appState.deleteSelected() }
+        .alert(deleteConfirmationTitle, isPresented: $confirmDelete) {
+            TextField(deleteConfirmationPrompt, text: $deleteConfirmationText)
+                .accessibilityIdentifier("delete.confirmationText")
+            Button(deleteConfirmationButtonTitle, role: .destructive) {
+                let profileID = deleteTargetProfile?.id
+                finishDeleteConfirmation()
+                if let profileID {
+                    Task { await appState.delete(profileID: profileID) }
+                }
             }
+            .disabled(!isDeleteConfirmationValid)
+            .accessibilityIdentifier("delete.confirm")
             Button("Cancel", role: .cancel) {}
+                .accessibilityIdentifier("delete.cancel")
+        } message: {
+            Text(deleteConfirmationMessage)
+        }
+        .onChange(of: confirmDelete) { _, isPresented in
+            if !isPresented {
+                finishDeleteConfirmation()
+            }
         }
     }
 
@@ -130,7 +155,7 @@ struct MainWindowView: View {
             routeSection(title: "Workspace", routes: [.overview, .profiles, .activity])
             routeSection(title: "Runtime", routes: [.containers, .images, .volumes, .networks, .monitor])
             routeSection(title: "Kubernetes", routes: [.kubernetesCluster, .kubernetesWorkloads, .kubernetesServices])
-            routeSection(title: "Support", routes: [.settings, .diagnostics])
+            supportSection
 
             Section {
                 if appState.profiles.isEmpty {
@@ -191,8 +216,25 @@ struct MainWindowView: View {
         Section(title) {
             ForEach(routes) { route in
                 Label(route.title, systemImage: route.symbol)
+                    .accessibilityIdentifier("route.\(route.rawValue)")
                     .tag(route)
             }
+        }
+    }
+
+    private var supportSection: some View {
+        Section("Support") {
+            Button {
+                openSettings()
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("route.settings")
+
+            Label(WorkspaceRoute.diagnostics.title, systemImage: WorkspaceRoute.diagnostics.symbol)
+                .accessibilityIdentifier("route.\(WorkspaceRoute.diagnostics.rawValue)")
+                .tag(WorkspaceRoute.diagnostics)
         }
     }
 
@@ -219,6 +261,42 @@ struct MainWindowView: View {
         )
     }
 
+    private var deleteProfileName: String {
+        deleteTargetProfile?.name ?? "selected profile"
+    }
+
+    private var deleteConfirmationTitle: String {
+        "Delete \(deleteProfileName)?"
+    }
+
+    private var deleteConfirmationPrompt: String {
+        "Type \(deleteProfileName) to confirm"
+    }
+
+    private var deleteConfirmationMessage: String {
+        "This permanently deletes the Colima profile named \(deleteProfileName), including its VM and data. This cannot be undone."
+    }
+
+    private var deleteConfirmationButtonTitle: String {
+        "Delete \(deleteProfileName)"
+    }
+
+    private var isDeleteConfirmationValid: Bool {
+        deleteConfirmationText == deleteTargetProfile?.name
+    }
+
+    private func beginDeleteConfirmation() {
+        guard let selectedProfile = appState.selectedProfile else { return }
+        deleteTargetProfile = selectedProfile
+        deleteConfirmationText = ""
+        confirmDelete = true
+    }
+
+    private func finishDeleteConfirmation() {
+        deleteConfirmationText = ""
+        deleteTargetProfile = nil
+    }
+
     private func selectProfile(_ profile: ColimaProfile) {
         appState.selectedProfileID = profile.id
         if appState.selectedSection == .diagnostics {
@@ -231,6 +309,8 @@ struct MainWindowView: View {
 struct ProfileEditorView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @State private var validationErrors: [String] = ProfileConfiguration.default.validationErrors
+    @State private var isValidatingConfiguration = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -238,7 +318,7 @@ struct ProfileEditorView: View {
                 Section("Profile") {
                     TextField("Name", text: $appState.editingConfiguration.name)
                     Picker("Runtime", selection: $appState.editingConfiguration.runtime) {
-                        ForEach(ColimaRuntime.allCases) { runtime in
+                        ForEach(ColimaRuntime.allCases.filter { $0 != .unknown && $0 != .none }) { runtime in
                             Text(runtime.label).tag(runtime)
                         }
                     }
@@ -274,6 +354,7 @@ struct ProfileEditorView: View {
                         Text("Bridged").tag("bridged")
                     }
                     TextField("Interface", text: $appState.editingConfiguration.network.interface)
+                        .disabled(appState.editingConfiguration.network.mode == "shared")
                     TagListEditor(title: "DNS Resolvers", values: $appState.editingConfiguration.network.dnsResolvers)
                 }
 
@@ -313,18 +394,21 @@ struct ProfileEditorView: View {
                         }
                     }
                     Toggle("Rosetta", isOn: $appState.editingConfiguration.rosetta)
+                        .disabled(appState.editingConfiguration.vmType != .vz || appState.editingConfiguration.architecture == .x86_64)
                     Toggle("Nested Virtualization", isOn: $appState.editingConfiguration.nestedVirtualization)
+                        .disabled(appState.editingConfiguration.vmType != .vz)
                     TagListEditor(title: "Additional CLI Args", values: $appState.editingConfiguration.additionalArgs)
                 }
             }
             .formStyle(.grouped)
 
-            ValidationSummary(errors: appState.editingConfiguration.validationErrors)
+            ValidationSummary(errors: validationErrors)
 
             Divider()
 
             HStack {
                 Button("Cancel") {
+                    appState.cancelProfileEditing()
                     dismiss()
                 }
                 Spacer()
@@ -332,10 +416,22 @@ struct ProfileEditorView: View {
                     Task { await appState.saveEditingConfiguration() }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(!appState.editingConfiguration.validationErrors.isEmpty || appState.activeOperation != nil)
+                .disabled(!validationErrors.isEmpty || isValidatingConfiguration || appState.activeOperation != nil)
             }
             .padding()
         }
+        .task(id: appState.editingConfiguration) {
+            await validate(configuration: appState.editingConfiguration)
+        }
+    }
+
+    private func validate(configuration: ProfileConfiguration) async {
+        isValidatingConfiguration = true
+        validationErrors = configuration.validationErrors
+        let errors = await configuration.validationErrorsCheckingFilesystem()
+        guard !Task.isCancelled else { return }
+        validationErrors = errors
+        isValidatingConfiguration = false
     }
 }
 
@@ -410,7 +506,9 @@ struct OptionalIntField: View {
     }
 }
 
-#Preview {
-    MainWindowView()
-        .environmentObject(PreviewSupport.appState)
+struct MainWindowView_Previews: PreviewProvider {
+    static var previews: some View {
+        MainWindowView()
+            .environmentObject(PreviewSupport.appState)
+    }
 }

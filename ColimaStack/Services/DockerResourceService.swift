@@ -30,73 +30,67 @@ struct LiveDockerResourceService: DockerResourceProviding {
     }
 
     func snapshot(context: String? = nil) async throws -> DockerResourceSnapshot {
-        var issues: [BackendIssue] = []
-        var runs: [ManagedCommandRun] = []
         let collectedAt = Date()
-        let activeContext = await collectString(
+        async let activeContextResult = collectStringResult(
             context: context,
             arguments: ["context", "show"],
-            purpose: "Read active Docker context",
-            issues: &issues,
-            runs: &runs
-        ) ?? context ?? ""
-
-        let containers = await collectJSONLines(
+            purpose: "Read active Docker context"
+        )
+        async let containersResult = collectJSONLinesResult(
             context: context,
             arguments: ["ps", "--all", "--no-trunc", "--format", "{{json .}}"],
             purpose: "List Docker containers",
             source: BackendIssueSource.docker,
-            issues: &issues,
-            runs: &runs,
             transform: Self.container
         )
-        let images = await collectJSONLines(
+        async let imagesResult = collectJSONLinesResult(
             context: context,
             arguments: ["images", "--digests", "--no-trunc", "--format", "{{json .}}"],
             purpose: "List Docker images",
             source: BackendIssueSource.docker,
-            issues: &issues,
-            runs: &runs,
             transform: Self.image
         )
-        let volumes = await collectJSONLines(
+        async let volumesResult = collectJSONLinesResult(
             context: context,
             arguments: ["volume", "ls", "--format", "{{json .}}"],
             purpose: "List Docker volumes",
             source: BackendIssueSource.docker,
-            issues: &issues,
-            runs: &runs,
             transform: Self.volume
         )
-        let networks = await collectJSONLines(
+        async let networksResult = collectJSONLinesResult(
             context: context,
             arguments: ["network", "ls", "--no-trunc", "--format", "{{json .}}"],
             purpose: "List Docker networks",
             source: BackendIssueSource.docker,
-            issues: &issues,
-            runs: &runs,
             transform: Self.network
         )
-        let stats = await collectJSONLines(
+        async let statsResult = collectJSONLinesResult(
             context: context,
             arguments: ["stats", "--no-stream", "--format", "{{json .}}"],
             purpose: "Read Docker container stats",
             source: BackendIssueSource.metrics,
-            issues: &issues,
-            runs: &runs,
             transform: Self.stats
         )
-        let diskUsage = await collectJSONLines(
+        async let diskUsageResult = collectJSONLinesResult(
             context: context,
             arguments: ["system", "df", "--format", "{{json .}}"],
             purpose: "Read Docker disk usage",
             source: BackendIssueSource.metrics,
-            issues: &issues,
-            runs: &runs,
             transform: Self.diskUsage
         )
 
-        if containers.contains(where: { $0.state.lowercased() == "dead" }) {
+        let activeContext = await activeContextResult
+        let containers = await containersResult
+        let images = await imagesResult
+        let volumes = await volumesResult
+        let networks = await networksResult
+        let stats = await statsResult
+        let diskUsage = await diskUsageResult
+
+        var issues = activeContext.issues + containers.issues + images.issues + volumes.issues + networks.issues + stats.issues + diskUsage.issues
+        let runs = activeContext.runs + containers.runs + images.runs + volumes.runs + networks.runs + stats.runs + diskUsage.runs
+
+        if containers.values.contains(where: { $0.state.lowercased() == "dead" }) {
             issues.append(
                 BackendIssue(
                     severity: .warning,
@@ -108,51 +102,49 @@ struct LiveDockerResourceService: DockerResourceProviding {
         }
 
         return DockerResourceSnapshot(
-            context: activeContext,
+            context: activeContext.value ?? context ?? "",
             collectedAt: collectedAt,
-            containers: containers,
-            images: images,
-            volumes: volumes,
-            networks: networks,
-            stats: stats,
-            diskUsage: diskUsage,
+            containers: containers.values,
+            images: images.values,
+            volumes: volumes.values,
+            networks: networks.values,
+            stats: stats.values,
+            diskUsage: diskUsage.values,
             issues: issues,
             commandRuns: runs
         )
     }
 
-    private func collectString(
+    private func collectStringResult(
         context: String?,
         arguments: [String],
-        purpose: String,
-        issues: inout [BackendIssue],
-        runs: inout [ManagedCommandRun]
-    ) async -> String? {
-        let run = await runDocker(context: context, arguments: arguments, purpose: purpose, issues: &issues)
-        guard let run else { return nil }
-        runs.append(run)
+        purpose: String
+    ) async -> (value: String?, issues: [BackendIssue], runs: [ManagedCommandRun]) {
+        var issues: [BackendIssue] = []
+        guard let run = await runDocker(context: context, arguments: arguments, purpose: purpose, issues: &issues) else {
+            return (nil, issues, [])
+        }
         guard run.succeeded else {
             issues.append(issue(for: run, source: .docker, title: purpose))
-            return nil
+            return (nil, issues, [run])
         }
-        return run.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (run.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines), issues, [run])
     }
 
-    private func collectJSONLines<Value>(
+    private func collectJSONLinesResult<Value>(
         context: String?,
         arguments: [String],
         purpose: String,
         source: BackendIssueSource,
-        issues: inout [BackendIssue],
-        runs: inout [ManagedCommandRun],
         transform: ([String: Any]) -> Value?
-    ) async -> [Value] {
-        let run = await runDocker(context: context, arguments: arguments, purpose: purpose, issues: &issues)
-        guard let run else { return [] }
-        runs.append(run)
+    ) async -> (values: [Value], issues: [BackendIssue], runs: [ManagedCommandRun]) {
+        var issues: [BackendIssue] = []
+        guard let run = await runDocker(context: context, arguments: arguments, purpose: purpose, issues: &issues) else {
+            return ([], issues, [])
+        }
         guard run.succeeded else {
             issues.append(issue(for: run, source: source, title: purpose))
-            return []
+            return ([], issues, [run])
         }
         let parsed = JSONCommandParser.parseJSONLines(run.standardOutput)
         if !parsed.malformedLineNumbers.isEmpty {
@@ -187,7 +179,7 @@ struct LiveDockerResourceService: DockerResourceProviding {
                 )
             )
         }
-        return values
+        return (values, issues, [run])
     }
 
     private func runDocker(
@@ -234,7 +226,7 @@ struct LiveDockerResourceService: DockerResourceProviding {
         )
     }
 
-    private static func container(_ object: [String: Any]) -> DockerContainerResource? {
+    nonisolated private static func container(_ object: [String: Any]) -> DockerContainerResource? {
         let id = object.string("ID", "Id", "ContainerID")
         let name = object.string("Names", "Name")
         guard !id.isEmpty || !name.isEmpty else { return nil }
@@ -249,11 +241,42 @@ struct LiveDockerResourceService: DockerResourceProviding {
             state: object.string("State"),
             status: object.string("Status"),
             size: object.string("Size"),
-            labels: object.labels("Labels")
+            labels: object.labels("Labels"),
+            portBindings: parsePortBindings(object.string("Ports"))
         )
     }
 
-    private static func image(_ object: [String: Any]) -> DockerImageResource? {
+    nonisolated private static func parsePortBindings(_ ports: String) -> [DockerContainerResource.PortBinding] {
+        ports
+            .split(separator: ",")
+            .compactMap { raw -> DockerContainerResource.PortBinding? in
+                let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let arrow = value.range(of: "->") else { return nil }
+                let host = String(value[..<arrow.lowerBound])
+                let container = String(value[arrow.upperBound...])
+                let hostParts = host.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+                guard let hostPortString = hostParts.last,
+                      let hostPort = Int(hostPortString),
+                      let containerPort = parseContainerPort(container) else {
+                    return nil
+                }
+                let hostIP = hostParts.dropLast().joined(separator: ":").trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+                return DockerContainerResource.PortBinding(
+                    hostIP: hostIP.isEmpty ? "localhost" : hostIP,
+                    hostPort: hostPort,
+                    containerPort: containerPort.port,
+                    proto: containerPort.proto
+                )
+            }
+    }
+
+    nonisolated private static func parseContainerPort(_ value: String) -> (port: Int, proto: String)? {
+        let parts = value.split(separator: "/", maxSplits: 1).map(String.init)
+        guard let port = Int(parts.first ?? "") else { return nil }
+        return (port, parts.dropFirst().first?.lowercased() ?? "tcp")
+    }
+
+    nonisolated private static func image(_ object: [String: Any]) -> DockerImageResource? {
         let id = object.string("ID", "Id")
         guard !id.isEmpty else { return nil }
         return DockerImageResource(
@@ -267,7 +290,7 @@ struct LiveDockerResourceService: DockerResourceProviding {
         )
     }
 
-    private static func volume(_ object: [String: Any]) -> DockerVolumeResource? {
+    nonisolated private static func volume(_ object: [String: Any]) -> DockerVolumeResource? {
         let name = object.string("Name")
         guard !name.isEmpty else { return nil }
         return DockerVolumeResource(
@@ -279,7 +302,7 @@ struct LiveDockerResourceService: DockerResourceProviding {
         )
     }
 
-    private static func network(_ object: [String: Any]) -> DockerNetworkResource? {
+    nonisolated private static func network(_ object: [String: Any]) -> DockerNetworkResource? {
         let id = object.string("ID", "Id")
         let name = object.string("Name")
         guard !id.isEmpty || !name.isEmpty else { return nil }
@@ -293,7 +316,7 @@ struct LiveDockerResourceService: DockerResourceProviding {
         )
     }
 
-    private static func stats(_ object: [String: Any]) -> DockerStatsResource? {
+    nonisolated private static func stats(_ object: [String: Any]) -> DockerStatsResource? {
         let id = object.string("Container", "ID")
         let name = object.string("Name")
         guard !id.isEmpty || !name.isEmpty else { return nil }
@@ -309,7 +332,7 @@ struct LiveDockerResourceService: DockerResourceProviding {
         )
     }
 
-    private static func diskUsage(_ object: [String: Any]) -> DockerDiskUsageResource? {
+    nonisolated private static func diskUsage(_ object: [String: Any]) -> DockerDiskUsageResource? {
         let type = object.string("Type")
         guard !type.isEmpty else { return nil }
         return DockerDiskUsageResource(

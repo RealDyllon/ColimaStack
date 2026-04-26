@@ -1,19 +1,19 @@
 import Foundation
 
-enum BackendResourceHealth: String, CaseIterable, Codable, Sendable {
+nonisolated enum BackendResourceHealth: String, CaseIterable, Codable, Sendable {
     case healthy
     case warning
     case error
     case unknown
 }
 
-enum BackendIssueSeverity: String, CaseIterable, Codable, Sendable {
+nonisolated enum BackendIssueSeverity: String, CaseIterable, Codable, Sendable {
     case info
     case warning
     case error
 }
 
-enum BackendIssueSource: String, CaseIterable, Codable, Sendable {
+nonisolated enum BackendIssueSource: String, CaseIterable, Codable, Sendable {
     case colima
     case docker
     case kubernetes
@@ -22,7 +22,7 @@ enum BackendIssueSource: String, CaseIterable, Codable, Sendable {
     case tooling
 }
 
-struct BackendIssue: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct BackendIssue: Identifiable, Hashable, Codable, Sendable {
     var id: UUID
     var severity: BackendIssueSeverity
     var source: BackendIssueSource
@@ -53,7 +53,7 @@ struct BackendIssue: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-enum ResourceLoadState<Value> {
+nonisolated enum ResourceLoadState<Value> {
     case idle
     case loading(startedAt: Date)
     case loaded(Value, updatedAt: Date)
@@ -71,7 +71,7 @@ enum ResourceLoadState<Value> {
     }
 }
 
-struct BackendSearchQuery: Hashable, Codable, Sendable {
+nonisolated struct BackendSearchQuery: Hashable, Codable, Sendable {
     var text: String
     var sources: Set<BackendIssueSource>
     var includeStopped: Bool
@@ -83,8 +83,8 @@ struct BackendSearchQuery: Hashable, Codable, Sendable {
     }
 }
 
-struct BackendSearchResult: Identifiable, Hashable, Codable, Sendable {
-    enum Kind: String, Codable, Sendable {
+nonisolated struct BackendSearchResult: Identifiable, Hashable, Codable, Sendable {
+    nonisolated enum Kind: String, Codable, Sendable {
         case profile
         case container
         case image
@@ -129,7 +129,7 @@ struct BackendSearchResult: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-struct BackendSearchIndex: Hashable, Codable, Sendable {
+nonisolated struct BackendSearchIndex: Hashable, Codable, Sendable {
     var collectedAt: Date
     var results: [BackendSearchResult]
 
@@ -231,7 +231,10 @@ nonisolated struct ManagedCommandRun: Identifiable, Hashable, Codable, Sendable,
     }
 
     var commandString: String {
-        ([executablePath] + request.arguments).joined(separator: " ")
+        if executablePath == "/usr/bin/env" {
+            return ([executablePath, request.toolName] + request.arguments).joined(separator: " ")
+        }
+        return ([executablePath] + request.arguments).joined(separator: " ")
     }
 
     var succeeded: Bool {
@@ -240,8 +243,8 @@ nonisolated struct ManagedCommandRun: Identifiable, Hashable, Codable, Sendable,
 
 }
 
-struct ResourceMetricSample: Identifiable, Hashable, Codable, Sendable {
-    enum Kind: String, Codable, Sendable {
+nonisolated struct ResourceMetricSample: Identifiable, Hashable, Codable, Sendable {
+    nonisolated enum Kind: String, Codable, Sendable {
         case cpu
         case memory
         case disk
@@ -261,8 +264,8 @@ struct ResourceMetricSample: Identifiable, Hashable, Codable, Sendable {
     var collectedAt: Date
 }
 
-struct RuntimeUsageSample: Identifiable, Hashable, Codable, Sendable {
-    var id: String { "\(profileID)-\(collectedAt.timeIntervalSince1970)" }
+nonisolated struct RuntimeUsageSample: Identifiable, Hashable, Codable, Sendable {
+    var id = UUID()
     var profileID: String
     var profileName: String
     var collectedAt: Date
@@ -291,7 +294,21 @@ struct RuntimeUsageSample: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-struct DockerContainerResource: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct DockerContainerResource: Identifiable, Hashable, Codable, Sendable {
+    nonisolated struct PortBinding: Identifiable, Hashable, Codable, Sendable {
+        var id: String { "\(hostIP):\(hostPort):\(containerPort)/\(proto)" }
+        var hostIP: String
+        var hostPort: Int
+        var containerPort: Int
+        var proto: String
+
+        var browserURL: URL? {
+            guard hostPort > 0 else { return nil }
+            let scheme = containerPort == 443 || hostPort == 443 ? "https" : "http"
+            return URL(string: "\(scheme)://localhost:\(hostPort)")
+        }
+    }
+
     var id: String
     var name: String
     var image: String
@@ -303,16 +320,46 @@ struct DockerContainerResource: Identifiable, Hashable, Codable, Sendable {
     var status: String
     var size: String
     var labels: [String: String]
+    var portBindings: [PortBinding]
+
+    init(
+        id: String,
+        name: String,
+        image: String,
+        command: String,
+        createdAt: String,
+        runningFor: String,
+        ports: String,
+        state: String,
+        status: String,
+        size: String,
+        labels: [String: String],
+        portBindings: [PortBinding] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.image = image
+        self.command = command
+        self.createdAt = createdAt
+        self.runningFor = runningFor
+        self.ports = ports
+        self.state = state
+        self.status = status
+        self.size = size
+        self.labels = labels
+        self.portBindings = portBindings
+    }
 
     var health: BackendResourceHealth {
         let normalized = state.lowercased()
         if normalized == "running" { return .healthy }
-        if normalized == "exited" || normalized == "dead" { return .warning }
+        if normalized == "dead" { return .error }
+        if normalized == "exited" || normalized == "restarting" || normalized == "paused" { return .warning }
         return .unknown
     }
 }
 
-struct DockerImageResource: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct DockerImageResource: Identifiable, Hashable, Codable, Sendable {
     var id: String
     var repository: String
     var tag: String
@@ -326,7 +373,7 @@ struct DockerImageResource: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-struct DockerVolumeResource: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct DockerVolumeResource: Identifiable, Hashable, Codable, Sendable {
     var id: String { name }
     var name: String
     var driver: String
@@ -335,7 +382,7 @@ struct DockerVolumeResource: Identifiable, Hashable, Codable, Sendable {
     var labels: [String: String]
 }
 
-struct DockerNetworkResource: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct DockerNetworkResource: Identifiable, Hashable, Codable, Sendable {
     var id: String
     var name: String
     var driver: String
@@ -344,7 +391,7 @@ struct DockerNetworkResource: Identifiable, Hashable, Codable, Sendable {
     var ipv6Enabled: Bool
 }
 
-struct DockerStatsResource: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct DockerStatsResource: Identifiable, Hashable, Codable, Sendable {
     var id: String
     var name: String
     var cpuPercent: String
@@ -355,7 +402,7 @@ struct DockerStatsResource: Identifiable, Hashable, Codable, Sendable {
     var pids: String
 }
 
-struct DockerDiskUsageResource: Hashable, Codable, Sendable {
+nonisolated struct DockerDiskUsageResource: Hashable, Codable, Sendable {
     var type: String
     var totalCount: String
     var activeCount: String
@@ -363,7 +410,7 @@ struct DockerDiskUsageResource: Hashable, Codable, Sendable {
     var reclaimable: String
 }
 
-struct DockerResourceSnapshot: Hashable, Codable, Sendable {
+nonisolated struct DockerResourceSnapshot: Hashable, Codable, Sendable {
     var context: String
     var collectedAt: Date
     var containers: [DockerContainerResource]
@@ -376,7 +423,7 @@ struct DockerResourceSnapshot: Hashable, Codable, Sendable {
     var commandRuns: [ManagedCommandRun]
 }
 
-struct KubernetesObjectMetadata: Hashable, Codable, Sendable {
+nonisolated struct KubernetesObjectMetadata: Hashable, Codable, Sendable {
     var name: String
     var namespace: String?
     var uid: String
@@ -384,7 +431,7 @@ struct KubernetesObjectMetadata: Hashable, Codable, Sendable {
     var creationTimestamp: Date?
 }
 
-struct KubernetesNodeResource: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct KubernetesNodeResource: Identifiable, Hashable, Codable, Sendable {
     var id: String { metadata.uid.isEmpty ? metadata.name : metadata.uid }
     var metadata: KubernetesObjectMetadata
     var roles: [String]
@@ -400,13 +447,13 @@ struct KubernetesNodeResource: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-struct KubernetesNamespaceResource: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct KubernetesNamespaceResource: Identifiable, Hashable, Codable, Sendable {
     var id: String { metadata.uid.isEmpty ? metadata.name : metadata.uid }
     var metadata: KubernetesObjectMetadata
     var phase: String
 }
 
-struct KubernetesContainerStatusResource: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct KubernetesContainerStatusResource: Identifiable, Hashable, Codable, Sendable {
     var id: String { name }
     var name: String
     var image: String
@@ -415,7 +462,7 @@ struct KubernetesContainerStatusResource: Identifiable, Hashable, Codable, Senda
     var state: String
 }
 
-struct KubernetesPodResource: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct KubernetesPodResource: Identifiable, Hashable, Codable, Sendable {
     var id: String { metadata.uid.isEmpty ? "\(metadata.namespace ?? "default")/\(metadata.name)" : metadata.uid }
     var metadata: KubernetesObjectMetadata
     var nodeName: String
@@ -432,7 +479,7 @@ struct KubernetesPodResource: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-struct KubernetesServiceResource: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct KubernetesServiceResource: Identifiable, Hashable, Codable, Sendable {
     var id: String { metadata.uid.isEmpty ? "\(metadata.namespace ?? "default")/\(metadata.name)" : metadata.uid }
     var metadata: KubernetesObjectMetadata
     var type: String
@@ -441,7 +488,7 @@ struct KubernetesServiceResource: Identifiable, Hashable, Codable, Sendable {
     var ports: [String]
 }
 
-struct KubernetesDeploymentResource: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct KubernetesDeploymentResource: Identifiable, Hashable, Codable, Sendable {
     var id: String { metadata.uid.isEmpty ? "\(metadata.namespace ?? "default")/\(metadata.name)" : metadata.uid }
     var metadata: KubernetesObjectMetadata
     var desiredReplicas: Int
@@ -454,8 +501,8 @@ struct KubernetesDeploymentResource: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-struct KubernetesMetricResource: Identifiable, Hashable, Codable, Sendable {
-    enum OwnerKind: String, Codable, Sendable {
+nonisolated struct KubernetesMetricResource: Identifiable, Hashable, Codable, Sendable {
+    nonisolated enum OwnerKind: String, Codable, Sendable {
         case node
         case pod
     }
@@ -468,7 +515,7 @@ struct KubernetesMetricResource: Identifiable, Hashable, Codable, Sendable {
     var memory: String
 }
 
-struct KubernetesResourceSnapshot: Hashable, Codable, Sendable {
+nonisolated struct KubernetesResourceSnapshot: Hashable, Codable, Sendable {
     var context: String
     var collectedAt: Date
     var nodes: [KubernetesNodeResource]
@@ -481,7 +528,7 @@ struct KubernetesResourceSnapshot: Hashable, Codable, Sendable {
     var commandRuns: [ManagedCommandRun]
 }
 
-struct ColimaBackendSnapshot: Hashable, Codable, Sendable {
+nonisolated struct ColimaBackendSnapshot: Hashable, Codable, Sendable {
     var profile: ColimaProfile
     var status: ColimaStatusDetail
     var docker: DockerResourceSnapshot?

@@ -1,6 +1,6 @@
 import Foundation
 
-enum ColimaRuntime: String, CaseIterable, Codable, Sendable, Identifiable {
+nonisolated enum ColimaRuntime: String, CaseIterable, Codable, Sendable, Identifiable {
     case docker
     case containerd
     case incus
@@ -26,7 +26,7 @@ enum ColimaRuntime: String, CaseIterable, Codable, Sendable, Identifiable {
     }
 }
 
-enum ProfileState: String, CaseIterable, Codable, Sendable {
+nonisolated enum ProfileState: String, CaseIterable, Codable, Sendable {
     case running
     case stopped
     case degraded
@@ -48,7 +48,7 @@ enum ProfileState: String, CaseIterable, Codable, Sendable {
     }
 }
 
-enum CPUArchitecture: String, CaseIterable, Codable, Sendable, Identifiable {
+nonisolated enum CPUArchitecture: String, CaseIterable, Codable, Sendable, Identifiable {
     case host
     case aarch64
     case x86_64
@@ -63,7 +63,7 @@ enum CPUArchitecture: String, CaseIterable, Codable, Sendable, Identifiable {
     }
 }
 
-enum VMType: String, CaseIterable, Codable, Sendable, Identifiable {
+nonisolated enum VMType: String, CaseIterable, Codable, Sendable, Identifiable {
     case qemu
     case vz
     case krunkit
@@ -82,7 +82,7 @@ enum VMType: String, CaseIterable, Codable, Sendable, Identifiable {
     }
 }
 
-enum MountType: String, CaseIterable, Codable, Sendable, Identifiable {
+nonisolated enum MountType: String, CaseIterable, Codable, Sendable, Identifiable {
     case virtiofs
     case sshfs
     case nineP = "9p"
@@ -97,7 +97,7 @@ enum MountType: String, CaseIterable, Codable, Sendable, Identifiable {
     }
 }
 
-enum PortForwarder: String, CaseIterable, Codable, Sendable, Identifiable {
+nonisolated enum PortForwarder: String, CaseIterable, Codable, Sendable, Identifiable {
     case ssh
     case grpc
     case none
@@ -106,7 +106,7 @@ enum PortForwarder: String, CaseIterable, Codable, Sendable, Identifiable {
     var label: String { rawValue.uppercased() }
 }
 
-struct ResourceAllocation: Hashable, Codable, Sendable {
+nonisolated struct ResourceAllocation: Hashable, Codable, Sendable {
     var cpu: Int
     var memoryGiB: Int
     var diskGiB: Int
@@ -114,7 +114,7 @@ struct ResourceAllocation: Hashable, Codable, Sendable {
     static let standard = ResourceAllocation(cpu: 2, memoryGiB: 4, diskGiB: 60)
 }
 
-struct KubernetesConfig: Hashable, Codable, Sendable {
+nonisolated struct KubernetesConfig: Hashable, Codable, Sendable {
     var enabled: Bool
     var version: String
     var context: String
@@ -122,7 +122,7 @@ struct KubernetesConfig: Hashable, Codable, Sendable {
     static let disabled = KubernetesConfig(enabled: false, version: "", context: "")
 }
 
-struct ColimaMount: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct ColimaMount: Identifiable, Hashable, Codable, Sendable {
     var id: String { cliValue }
     var location: String
     var mountPoint: String?
@@ -137,7 +137,7 @@ struct ColimaMount: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-struct ColimaNetworking: Hashable, Codable, Sendable {
+nonisolated struct ColimaNetworking: Hashable, Codable, Sendable {
     var address: String
     var socket: String
     var dockerContext: String
@@ -159,7 +159,7 @@ struct ColimaNetworking: Hashable, Codable, Sendable {
     }
 }
 
-struct ColimaConfigurationPaths: Hashable, Codable, Sendable {
+nonisolated struct ColimaConfigurationPaths: Hashable, Codable, Sendable {
     var homeDirectory: URL
     var profileConfiguration: URL
     var template: URL
@@ -167,7 +167,7 @@ struct ColimaConfigurationPaths: Hashable, Codable, Sendable {
     var limaOverride: URL
 }
 
-enum ColimaDocumentKind: String, CaseIterable, Codable, Sendable {
+nonisolated enum ColimaDocumentKind: String, CaseIterable, Codable, Sendable {
     case template
     case profileConfiguration
     case sshConfiguration
@@ -175,7 +175,7 @@ enum ColimaDocumentKind: String, CaseIterable, Codable, Sendable {
     case logs
 }
 
-struct ColimaDocument: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct ColimaDocument: Identifiable, Hashable, Codable, Sendable {
     var id: String { url.path }
     var kind: ColimaDocumentKind
     var profileName: String?
@@ -184,33 +184,33 @@ struct ColimaDocument: Identifiable, Hashable, Codable, Sendable {
     var lastModified: Date?
 }
 
-enum ToolAvailability: Hashable, Sendable {
+nonisolated enum ToolAvailability: Hashable, Sendable {
     case available(path: String, version: String?)
     case missing
     case error(String)
 }
 
-struct ToolCheck: Identifiable, Hashable, Sendable {
+nonisolated struct ToolCheck: Identifiable, Hashable, Sendable {
     var id: String
     var name: String { id }
     var availability: ToolAvailability
 }
 
-struct DockerStatus: Hashable, Sendable {
+nonisolated struct DockerStatus: Hashable, Sendable {
     var available: Bool
     var context: String
     var version: String
     var error: String
 }
 
-struct ColimaRuntimeStatus: Hashable, Sendable {
+nonisolated struct ColimaRuntimeStatus: Hashable, Sendable {
     var profileName: String
     var state: ProfileState
     var output: String
     var error: String
 }
 
-struct DiagnosticReport: Hashable, Sendable {
+nonisolated struct DiagnosticReport: Hashable, Sendable {
     var tools: [ToolCheck]
     var colima: ColimaRuntimeStatus
     var docker: DockerStatus
@@ -224,7 +224,7 @@ struct DiagnosticReport: Hashable, Sendable {
     )
 }
 
-struct ColimaDiagnostics: Hashable, Codable, Sendable {
+nonisolated struct ColimaDiagnostics: Hashable, Codable, Sendable {
     var rawListOutput: String?
     var rawStatusOutput: String?
     var rawKubernetesOutput: String?
@@ -232,7 +232,7 @@ struct ColimaDiagnostics: Hashable, Codable, Sendable {
     var errors: [String]
 }
 
-struct ColimaStatusDetail: Hashable, Codable, Sendable {
+nonisolated struct ColimaStatusDetail: Hashable, Codable, Sendable {
     var profileName: String
     var state: ProfileState
     var runtime: ColimaRuntime?
@@ -248,7 +248,7 @@ struct ColimaStatusDetail: Hashable, Codable, Sendable {
     var rawOutput: String
 }
 
-struct ColimaProfile: Identifiable, Hashable, Codable, Sendable {
+nonisolated struct ColimaProfile: Identifiable, Hashable, Codable, Sendable {
     var id: String { name }
     var name: String
     var state: ProfileState
@@ -322,8 +322,8 @@ struct ColimaProfile: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-struct CommandLogEntry: Identifiable, Hashable, Sendable {
-    enum Status: Hashable, Sendable {
+nonisolated struct CommandLogEntry: Identifiable, Hashable, Sendable {
+    nonisolated enum Status: Hashable, Sendable {
         case running
         case succeeded
         case failed(String)
@@ -336,7 +336,7 @@ struct CommandLogEntry: Identifiable, Hashable, Sendable {
     var output: String
 }
 
-struct ColimaCommandLogEntry: Identifiable, Hashable, Codable, Sendable, CombinedProcessOutput {
+nonisolated struct ColimaCommandLogEntry: Identifiable, Hashable, Codable, Sendable, CombinedProcessOutput {
     var id: UUID
     var executablePath: String
     var arguments: [String]
@@ -375,14 +375,14 @@ struct ColimaCommandLogEntry: Identifiable, Hashable, Codable, Sendable, Combine
 
 }
 
-struct ColimaCommandLog: Hashable, Codable, Sendable {
+nonisolated struct ColimaCommandLog: Hashable, Codable, Sendable {
     var profileName: String
     var collectedAt: Date
     var contents: String
     var entry: ColimaCommandLogEntry
 }
 
-struct ProfileConfiguration: Hashable, Codable, Sendable {
+nonisolated struct ProfileConfiguration: Hashable, Codable, Sendable {
     var name: String
     var resources: ResourceAllocation
     var runtime: ColimaRuntime
@@ -417,13 +417,10 @@ struct ProfileConfiguration: Hashable, Codable, Sendable {
         additionalArgs: []
     )
 
-    var validationErrors: [String] {
+    nonisolated var validationErrors: [String] {
         var errors: [String] = []
-        if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errors.append("Profile name is required.")
-        }
-        if name.contains(" ") {
-            errors.append("Profile name cannot contain spaces.")
+        if let profileNameError = ProfileNameValidator.validationError(for: name) {
+            errors.append(profileNameError)
         }
         if resources.cpu < 1 {
             errors.append("CPU must be at least 1.")
@@ -434,14 +431,153 @@ struct ProfileConfiguration: Hashable, Codable, Sendable {
         if resources.diskGiB < 1 {
             errors.append("Disk must be at least 1 GiB.")
         }
-        for mount in mounts where mount.localPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            errors.append("Mount local paths cannot be empty.")
+        if kubernetes.enabled, let k3sListenPort, !(1...65_535).contains(k3sListenPort) {
+            errors.append("K3s listen port must be between 1 and 65535.")
+        }
+        if network.mode == "bridged", network.interface.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errors.append("Bridged networking requires an interface.")
+        }
+        if rosetta, vmType != .vz {
+            errors.append("Rosetta requires the Virtualization.framework VM type.")
+        }
+        if nestedVirtualization, vmType != .vz {
+            errors.append("Nested virtualization requires the Virtualization.framework VM type.")
+        }
+        for resolver in network.dnsResolvers where !resolver.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !Self.isValidDNSResolver(resolver) {
+            errors.append("DNS resolver '\(resolver)' is not valid.")
+        }
+        if !kubernetes.version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           kubernetes.version.range(of: #"^v?[0-9]+(\.[0-9]+){1,2}([+\-.][A-Za-z0-9_.-]+)?$"#, options: .regularExpression) == nil {
+            errors.append("Kubernetes version must look like v1.30.4+k3s1.")
+        }
+        for mount in mounts {
+            let localPath = mount.localPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            let vmPath = mount.vmPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            if localPath.isEmpty {
+                errors.append("Mount local paths cannot be empty.")
+            } else {
+                if !localPath.hasPrefix("/") {
+                    errors.append("Mount local path '\(localPath)' must be absolute.")
+                }
+            }
+            if !vmPath.isEmpty, !vmPath.hasPrefix("/") {
+                errors.append("Mount VM path '\(vmPath)' must be absolute.")
+            }
+        }
+        errors += Self.additionalArgumentValidationErrors(additionalArgs)
+        return errors
+    }
+
+    nonisolated func validationErrorsCheckingFilesystem(fileManager: FileManager = .default) async -> [String] {
+        let synchronousErrors = validationErrors
+        let mounts = mounts
+        let filesystemErrors = await Task.detached(priority: .userInitiated) {
+            Self.filesystemValidationErrors(for: mounts, fileManager: fileManager)
+        }.value
+        return synchronousErrors + filesystemErrors
+    }
+
+    private nonisolated static func filesystemValidationErrors(for mounts: [MountConfiguration], fileManager: FileManager) -> [String] {
+        var errors: [String] = []
+        for mount in mounts {
+            let localPath = mount.localPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !localPath.isEmpty, localPath.hasPrefix("/") else { continue }
+            if !fileManager.fileExists(atPath: localPath) {
+                errors.append("Mount local path '\(localPath)' does not exist.")
+            }
         }
         return errors
     }
+
+    private nonisolated static func additionalArgumentValidationErrors(_ arguments: [String]) -> [String] {
+        let managedFlags: Set<String> = [
+            "--arch",
+            "--cpu",
+            "--cpus",
+            "--disk",
+            "--dns",
+            "--edit",
+            "--editor",
+            "--env",
+            "--force",
+            "--foreground",
+            "--k3s-arg",
+            "--k3s-listen-port",
+            "--kubernetes",
+            "--kubernetes-version",
+            "--memory",
+            "--mount",
+            "--mount-type",
+            "--nested-virtualization",
+            "--network-address",
+            "--network-interface",
+            "--network-mode",
+            "--network-preferred-route",
+            "--port-forwarder",
+            "--profile",
+            "--runtime",
+            "--vm-type",
+            "--vz-rosetta"
+        ]
+
+        var errors: [String] = []
+        for argument in arguments {
+            let trimmed = argument.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                errors.append("Additional CLI args cannot be blank.")
+                continue
+            }
+            if trimmed != argument {
+                errors.append("Additional CLI arg '\(trimmed)' cannot start or end with whitespace.")
+            }
+            if trimmed == "--" {
+                errors.append("Additional CLI args cannot include '--'.")
+            }
+            if trimmed.hasPrefix("-"), !trimmed.hasPrefix("--") {
+                errors.append("Additional CLI arg '\(trimmed)' cannot use short flags. Use the explicit long flag form.")
+            }
+            let flag = trimmed.split(separator: "=", maxSplits: 1).first.map(String.init) ?? trimmed
+            if managedFlags.contains(flag) {
+                errors.append("Additional CLI arg '\(flag)' is managed by Colima Stack and cannot be overridden.")
+            }
+        }
+        return errors
+    }
+
+    private nonisolated static func isValidDNSResolver(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if trimmed.range(of: #"^([0-9]{1,3}\.){3}[0-9]{1,3}$"#, options: .regularExpression) != nil {
+            return trimmed.split(separator: ".").allSatisfy { part in
+                guard let value = Int(part) else { return false }
+                return (0...255).contains(value)
+            }
+        }
+        if trimmed.range(of: #"^[0-9A-Fa-f:]+$"#, options: .regularExpression) != nil, trimmed.contains(":") {
+            return true
+        }
+        return trimmed.range(of: #"^[A-Za-z0-9.-]+$"#, options: .regularExpression) != nil
+    }
 }
 
-struct MountConfiguration: Identifiable, Hashable, Codable, Sendable {
+nonisolated enum ProfileNameValidator {
+    static func validationError(for name: String) -> String? {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedName.isEmpty {
+            return "Profile name is required."
+        }
+        if trimmedName.range(of: #"^[A-Za-z0-9][A-Za-z0-9_.-]*$"#, options: .regularExpression) == nil {
+            return "Profile name can only contain letters, numbers, dots, underscores, and hyphens, and must start with a letter or number."
+        }
+        return nil
+    }
+
+    static func isValid(_ name: String) -> Bool {
+        validationError(for: name) == nil
+    }
+}
+
+nonisolated struct MountConfiguration: Identifiable, Hashable, Codable, Sendable {
     var id = UUID()
     var localPath: String
     var vmPath: String
@@ -459,7 +595,7 @@ struct MountConfiguration: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
-struct NetworkConfiguration: Hashable, Codable, Sendable {
+nonisolated struct NetworkConfiguration: Hashable, Codable, Sendable {
     var networkAddress: Bool
     var mode: String
     var interface: String
@@ -468,7 +604,7 @@ struct NetworkConfiguration: Hashable, Codable, Sendable {
     static let standard = NetworkConfiguration(networkAddress: false, mode: "shared", interface: "", dnsResolvers: [])
 }
 
-struct ColimaStartRequest: Hashable, Codable, Sendable {
+nonisolated struct ColimaStartRequest: Hashable, Codable, Sendable {
     var profileName: String
     var runtime: ColimaRuntime?
     var vmType: VMType?
@@ -488,26 +624,26 @@ struct ColimaStartRequest: Hashable, Codable, Sendable {
     var additionalArguments: [String]
 }
 
-struct ColimaStopRequest: Hashable, Codable, Sendable {
+nonisolated struct ColimaStopRequest: Hashable, Codable, Sendable {
     var profileName: String
     var force: Bool
 }
 
-struct ColimaRestartRequest: Hashable, Codable, Sendable {
+nonisolated struct ColimaRestartRequest: Hashable, Codable, Sendable {
     var profileName: String
     var force: Bool
 }
 
-struct ColimaDeleteRequest: Hashable, Codable, Sendable {
+nonisolated struct ColimaDeleteRequest: Hashable, Codable, Sendable {
     var profileName: String
     var force: Bool
 }
 
-struct ColimaLogsRequest: Hashable, Codable, Sendable {
+nonisolated struct ColimaLogsRequest: Hashable, Codable, Sendable {
     var profileName: String
 }
 
-enum ColimaKubernetesAction: String, Codable, CaseIterable, Sendable {
+nonisolated enum ColimaKubernetesAction: String, Codable, CaseIterable, Sendable {
     case status
     case start
     case stop
@@ -515,23 +651,23 @@ enum ColimaKubernetesAction: String, Codable, CaseIterable, Sendable {
     case reset
 }
 
-struct ColimaKubernetesRequest: Hashable, Codable, Sendable {
+nonisolated struct ColimaKubernetesRequest: Hashable, Codable, Sendable {
     var profileName: String
     var action: ColimaKubernetesAction
 }
 
-struct ColimaSSHRequest: Hashable, Codable, Sendable {
+nonisolated struct ColimaSSHRequest: Hashable, Codable, Sendable {
     var profileName: String
     var layer: Bool?
     var command: [String]
 }
 
-struct ColimaEditRequest: Hashable, Codable, Sendable {
+nonisolated struct ColimaEditRequest: Hashable, Codable, Sendable {
     var profileName: String
     var editor: String?
 }
 
-extension ColimaConfigurationPaths {
+nonisolated extension ColimaConfigurationPaths {
     static func `default`(for profileName: String) -> ColimaConfigurationPaths {
         let home = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".colima")
         return ColimaConfigurationPaths(

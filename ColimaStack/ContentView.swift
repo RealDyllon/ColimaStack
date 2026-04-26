@@ -14,7 +14,9 @@ struct ContentView: View {
     }
 }
 
-#Preview {
-    ContentView()
-        .environmentObject(PreviewSupport.appState)
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+            .environmentObject(PreviewSupport.appState)
+    }
 }

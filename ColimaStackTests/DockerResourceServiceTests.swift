@@ -26,7 +26,7 @@ struct DockerResourceServiceTests {
         #expect(snapshot.networks.first?.ipv6Enabled == true)
         #expect(snapshot.stats.first?.pids == "9")
         #expect(snapshot.diskUsage.first?.type == "Images")
-        #expect(runner.requests.map(\.arguments) == [
+        #expect(Set(runner.requests.map(\.arguments)) == Set([
             ["--context", "colima-dev", "context", "show"],
             ["--context", "colima-dev", "ps", "--all", "--no-trunc", "--format", "{{json .}}"],
             ["--context", "colima-dev", "images", "--digests", "--no-trunc", "--format", "{{json .}}"],
@@ -34,7 +34,7 @@ struct DockerResourceServiceTests {
             ["--context", "colima-dev", "network", "ls", "--no-trunc", "--format", "{{json .}}"],
             ["--context", "colima-dev", "stats", "--no-stream", "--format", "{{json .}}"],
             ["--context", "colima-dev", "system", "df", "--format", "{{json .}}"]
-        ])
+        ]))
         #expect(runner.requests.allSatisfy { $0.toolName == "docker" && $0.timeout == 15 })
     }
 
@@ -68,7 +68,7 @@ struct DockerResourceServiceTests {
                 && issue.source == .docker
                 && issue.severity == .warning
                 && issue.message == "permission denied"
-                && issue.command == "/usr/bin/env network ls --no-trunc --format {{json .}}"
+                && issue.command == "/usr/bin/env docker network ls --no-trunc --format {{json .}}"
         })
         #expect(snapshot.issues.contains { issue in
             issue.title == "Dead Docker containers detected"

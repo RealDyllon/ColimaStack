@@ -2,7 +2,14 @@
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 
+const [githubOwner, githubRepo] = process.env.GITHUB_REPOSITORY?.split('/') ?? [];
+const isGitHubPagesBuild = process.env.GITHUB_PAGES === 'true';
+const isUserOrOrgPagesRepo = githubOwner && githubRepo === `${githubOwner}.github.io`;
+const githubPagesBase = isGitHubPagesBuild && githubRepo && !isUserOrOrgPagesRepo ? `/${githubRepo}` : '/';
+
 export default defineConfig({
+  site: githubOwner ? `https://${githubOwner}.github.io` : undefined,
+  base: githubPagesBase,
   integrations: [
     starlight({
       title: 'ColimaStack Docs',
