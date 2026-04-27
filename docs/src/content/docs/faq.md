@@ -11,6 +11,10 @@ No. ColimaStack depends on Colima. It invokes `colima` for profile lifecycle ope
 
 No. Docker inventory requires the Docker CLI and a running Docker-backed Colima profile.
 
+## Do I need Docker or kubectl installed?
+
+Not for core Colima profile management. Install the Docker CLI only for Docker runtime inventory, and install `kubectl` only for Kubernetes inventory and context checks.
+
 ## Can I use multiple Colima profiles?
 
 Yes. Profiles returned by `colima list --json` appear in the sidebar and `Profiles` view. Named Docker contexts usually follow `colima-<profile>`.

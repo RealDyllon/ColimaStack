@@ -295,6 +295,42 @@ struct ColimaCLITests {
         #expect(diagnostics.docker.error == "Colima default is stopped")
     }
 
+    @Test func diagnosticsTreatsDockerKubectlAndLimaAsOptionalWhenMissing() async throws {
+        let runner = FakeProcessRunner(results: [
+            "version": ProcessResult(
+                request: ProcessRequest(arguments: ["colima", "version"]),
+                exitCode: 0,
+                stdout: "colima version 0.10.1",
+                stderr: ""
+            ),
+            "colima status --json": ProcessResult(
+                request: ProcessRequest(arguments: ["colima", "status", "--json"], environment: ["COLIMA_PROFILE": "default"]),
+                exitCode: 0,
+                stdout: #"{"display_name":"colima","runtime":"containerd","kubernetes":false}"#,
+                stderr: ""
+            )
+        ])
+        let cli = LiveColimaCLI(
+            processRunner: runner,
+            toolLocator: FakeToolLocator(urls: [
+                "colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")
+            ])
+        )
+
+        let diagnostics = await cli.diagnostics()
+
+        #expect(diagnostics.tools.first(where: { $0.id == "colima" })?.availability == .available(path: "/opt/homebrew/bin/colima", version: "colima version 0.10.1"))
+        #expect(diagnostics.tools.first(where: { $0.id == "docker" })?.availability == .missing)
+        #expect(diagnostics.tools.first(where: { $0.id == "kubectl" })?.availability == .missing)
+        #expect(diagnostics.tools.first(where: { $0.id == "limactl" })?.availability == .missing)
+        #expect(diagnostics.colima.state == .running)
+        #expect(diagnostics.colima.runtime == .containerd)
+        #expect(!diagnostics.docker.available)
+        #expect(diagnostics.docker.error == "Not installed")
+        #expect(diagnostics.messages.isEmpty)
+        #expect(runner.requests.allSatisfy { $0.executableURL.lastPathComponent == "colima" })
+    }
+
     @Test func diagnosticsUsesExplicitColimaDockerContextWhenActiveContextDiffers() async throws {
         let runner = FakeProcessRunner(results: [
             "version": ProcessResult(
