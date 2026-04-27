@@ -3,8 +3,7 @@
 # 2. In the GitHub repository, open Settings -> Pages.
 # 3. Set Build and deployment -> Source to "GitHub Actions".
 # 4. Ensure Actions are enabled for the repository, then push to the main branch.
-# 5. The docs will publish to https://<owner>.github.io/<repo>/.
-#    If the repo is named <owner>.github.io, GitHub publishes it at https://<owner>.github.io/.
+# 5. The docs publish to the custom domain configured in docs/public/CNAME.
 
 name: Deploy Docs to GitHub Pages
 
@@ -54,6 +53,8 @@ jobs:
         run: pnpm build
         env:
           GITHUB_PAGES: 'true'
+          DOCS_SITE: 'https://colimastack.dyllon.io'
+          DOCS_BASE: '/'
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
