@@ -1,29 +1,62 @@
 ---
 title: Kubernetes
-description: Manage and inspect Kubernetes support for Colima profiles.
+description: Inspect Kubernetes cluster state for the selected Colima profile.
 ---
 
-ColimaStack can enable or disable Kubernetes for a profile through Colima:
+Kubernetes views appear in the app sidebar as `Cluster`, `Workloads`, and `Services`. They are available only when Kubernetes is enabled for the selected Colima profile and `kubectl` can reach the selected context.
+
+![ColimaStack Kubernetes Cluster screenshot](/screenshots/kubernetes-cluster.png)
+
+## What Cluster shows
+
+- Kubernetes context.
+- Kubernetes version reported by the profile.
+- Node count.
+- Profile state.
+- Cluster identity values.
+- Nodes with name, roles, kubelet version, and Ready condition.
+
+## How to get data to appear
+
+1. Select a Colima profile.
+2. Enable Kubernetes in the profile editor or use `Enable Kubernetes` from `Cluster` or the menu bar.
+3. Start or restart the profile if required.
+4. Confirm `kubectl` can reach the context.
+5. Click `Refresh`.
+
+Minimal check:
 
 ```sh
-colima kubernetes start
-colima kubernetes stop
+kubectl config current-context
+kubectl get nodes
 ```
 
-The Kubernetes views use `kubectl` for cluster inventory. Install `kubectl` only if you want to use these views.
+## Available actions
 
-## Cluster view
+- `Enable Kubernetes` when Kubernetes is disabled.
+- `Disable Kubernetes` when enabled.
+- `Restart Profile`.
+- Navigate to `Workloads` and `Services`.
 
-The cluster view focuses on nodes, namespaces, and cluster health.
+Kubernetes resource views are read-only; the app does not create, update, delete, or apply Kubernetes objects.
 
-## Workloads view
+## Empty states
 
-The workloads view focuses on pods and deployments across namespaces.
+- `Cluster state unavailable`: Colima diagnostics are unavailable.
+- `Select a profile`: Kubernetes state is scoped to one profile.
+- `Kubernetes is disabled`: the selected profile does not have Kubernetes enabled.
+- `No nodes reported by kubectl`: `kubectl get nodes -o json` returned no nodes or the command failed.
+- `No nodes match the current search`: local search filtered the rows.
 
-## Services view
+## Source commands
 
-The services view focuses on Kubernetes services across namespaces.
+ColimaStack invokes:
 
-## Metrics
+```sh
+kubectl --context <context> config current-context
+kubectl --context <context> get nodes -o json
+kubectl --context <context> get namespaces -o json
+kubectl --context <context> top nodes --no-headers
+```
 
-Node and pod metrics depend on the cluster exposing metrics to `kubectl top`.
+See [Command API](/reference/command-api/), [Compatibility](/compatibility/), and [Diagnostics](/features/diagnostics/).

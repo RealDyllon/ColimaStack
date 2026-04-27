@@ -1,46 +1,86 @@
 ---
 title: Troubleshooting
-description: Recover from missing tools, bad Docker contexts, Kubernetes issues, and command failures.
+description: Recover from missing tools, stopped profiles, Docker context errors, Kubernetes issues, and empty views.
 ---
 
-Start with Diagnostics when ColimaStack does not show expected runtime data.
+Start with [Diagnostics](/features/diagnostics/). It runs the same checks ColimaStack uses to decide whether views can populate.
 
 ## Colima is missing
 
-Install Colima and refresh diagnostics:
+Symptom: `Colima is not installed`, `Colima setup required`, or no profiles appear.
+
+Fix:
 
 ```sh
 brew install colima
+colima version
 ```
+
+Restart ColimaStack or click `Refresh`.
+
+## Profiles are empty
+
+If `colima` is installed but no profiles exist, use `Create Profile` in `Profiles` or start a default profile:
+
+```sh
+colima start
+```
+
+Existing users should verify `COLIMA_HOME` if profiles live outside `~/.colima`.
 
 ## Docker is unavailable
 
-Docker CLI is optional. If you want Docker resource views, verify the Docker CLI is installed and points at the expected context:
+Symptom: `Docker endpoint unavailable`, empty Docker views, or Diagnostics shows Docker unavailable.
+
+Checks:
 
 ```sh
-docker context ls
-docker context use colima
-docker ps
+docker version
+docker context show
+docker --context colima version
 ```
 
-For a named Colima profile, use `colima-<profile>`.
+For named profiles, use `colima-<profile>` as the context. Start the selected profile if it is stopped.
 
 ## Kubernetes is unavailable
 
-kubectl is optional. If you want Kubernetes resource views, confirm Kubernetes is enabled for the selected profile:
+Symptoms: `Kubernetes is disabled`, empty Cluster/Workloads/Services, or `kubectl` errors.
+
+Checks:
 
 ```sh
-colima kubernetes start
+kubectl version --client
 kubectl config current-context
 kubectl get nodes
 ```
 
-If workload metrics are empty, verify that metrics support is installed in the cluster.
+Kubernetes must be enabled on the selected Colima profile. Metrics require `kubectl top` to work; missing metrics do not prevent resource lists from appearing.
+
+## A view is empty
+
+Empty can be normal:
+
+- `Containers`: no containers exist in the selected Docker context.
+- `Images`: no images exist in the selected Docker context.
+- `Volumes`: no configured mounts or Docker volumes exist.
+- `Networks`: Docker networks were not returned or search filtered them.
+- `Workloads`: no pods or deployments exist.
+- `Services`: no services exist.
+- `Activity`: no app lifecycle command has run in this session.
+- `Monitor`: no sample has been collected for a running Docker profile.
+
+Clear search, click `Refresh`, and verify the selected profile.
 
 ## Commands fail
 
-Open Activity to review recent commands and terminal output. ColimaStack records command progress and failure output so you can retry from the app or reproduce the command in Terminal.
+Open `Activity` for the app-level command label and output. Commands are redacted and capped before display. Use [Command API](/reference/command-api/) to compare the exact command shape.
 
 ## Logs are empty
 
-ColimaStack reads daemon logs from `$COLIMA_HOME/<profile>/daemon/daemon.log`. If no log file exists, the app shows the expected path.
+ColimaStack reads:
+
+```txt
+$COLIMA_HOME/<profile>/daemon/daemon.log
+```
+
+If the file is missing, the app shows the expected path. Start the profile or check Colima's local files.
