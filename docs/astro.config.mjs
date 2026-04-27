@@ -1,6 +1,7 @@
 // @ts-check
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
+import starlightThemeNext from 'starlight-theme-next';
 
 const site = process.env.DOCS_SITE ?? 'https://colimastack.dyllon.io';
 const base = process.env.DOCS_BASE ?? '/';
@@ -12,6 +13,7 @@ export default defineConfig({
     starlight({
       title: 'ColimaStack Docs',
       description: 'Documentation for ColimaStack, a native macOS control center for Colima, Docker, and Kubernetes workflows.',
+      plugins: [starlightThemeNext()],
       customCss: ['./src/styles/custom.css'],
       social: [
         {

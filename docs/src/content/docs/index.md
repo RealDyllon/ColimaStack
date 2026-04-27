@@ -5,6 +5,7 @@ template: splash
 sidebar:
   label: Overview
 hero:
+  title: '<img class="landing-wordmark" src="/brand/colimastack-logo-wordmark.png" alt="ColimaStack" />'
   tagline: A native macOS workspace for Colima profiles, Docker inventory, Kubernetes visibility, diagnostics, and command feedback.
   image:
     html: '<img class="landing-hero-image" src="/screenshots/overview.png" alt="ColimaStack overview dashboard showing profile status, runtime health, and backend resources." />'
