@@ -42,11 +42,13 @@ brew install kubectl
 brew install lima
 ```
 
+<!-- Then download the app from here [link to latest stable github release] -->
+
 ## Documentation
 
 The documentation site is built with Astro Starlight and is published at [colimastack.dyllon.io](https://colimastack.dyllon.io/).
 
-Useful docs entry points:
+Useful docs:
 
 - [Quick Start](https://colimastack.dyllon.io/quick-start/)
 - [Install](https://colimastack.dyllon.io/install/)
@@ -56,13 +58,3 @@ Useful docs entry points:
 - [Command API](https://colimastack.dyllon.io/reference/command-api/)
 
 If you want to contribute, see [CONTRIBUTING.md](CONTRIBUTING.md) for local development, testing, documentation, and release workflow details.
-
-## How It Works
-
-ColimaStack is a local-first macOS app. It calls the Colima CLI for profile lifecycle operations, uses Docker CLI JSON output for Docker runtime inventory when the Docker CLI is installed, reads Kubernetes state through `kubectl` when Kubernetes support is installed, and loads selected Colima files such as profile configuration, SSH config, and daemon logs.
-
-Most profile-scoped operations use the `COLIMA_PROFILE` environment variable so the active app selection maps directly to the intended Colima runtime.
-
-## Current Scope
-
-This repository contains the macOS app, tests, and documentation. Build from source is the documented app acquisition path unless a future release provides a public Developer ID artifact.
