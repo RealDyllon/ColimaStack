@@ -5,7 +5,6 @@
 //  Created by Dyllon on 25/4/26.
 //
 
-import AppKit
 import XCTest
 
 final class ColimaStackUITests: XCTestCase {
@@ -22,11 +21,9 @@ final class ColimaStackUITests: XCTestCase {
     @MainActor
     func testPrimaryNavigationUsesMockData() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["--mock-data"]
+        app.launchArguments = ["--mock-data", "-ApplePersistenceIgnoreState", "YES"]
         app.launch()
-        app.activate()
-
-        XCTAssertTrue(app.buttons["toolbar.refresh"].waitForExistence(timeout: 5))
+        ensureMainWindow(in: app)
 
         let containersRoute = app.descendants(matching: .any)["route.containers"]
         XCTAssertTrue(containersRoute.waitForExistence(timeout: 3))
@@ -50,9 +47,9 @@ final class ColimaStackUITests: XCTestCase {
     @MainActor
     func testDeleteProfileRequiresTypedProfileConfirmation() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["--mock-data"]
+        app.launchArguments = ["--mock-data", "-ApplePersistenceIgnoreState", "YES"]
         app.launch()
-        app.activate()
+        ensureMainWindow(in: app)
 
         let deleteButton = app.buttons["toolbar.delete"].firstMatch
         XCTAssertTrue(deleteButton.waitForExistence(timeout: 5))
@@ -72,18 +69,4 @@ final class ColimaStackUITests: XCTestCase {
         confirmationField.typeText("default")
         XCTAssertTrue(confirmButton.isEnabled)
     }
-}
-
-private func terminateRunningColimaStack() {
-    NSRunningApplication.runningApplications(withBundleIdentifier: "io.dyllon.ColimaStack")
-        .forEach { $0.forceTerminate() }
-    RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-}
-
-private func hideKnownInterruptingApps() {
-    ["com.googlecode.iterm2", "com.apple.Terminal"].forEach { bundleIdentifier in
-        NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
-            .forEach { $0.hide() }
-    }
-    RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 }

@@ -11,15 +11,23 @@ ColimaStack is a macOS app that controls local tools installed on your machine. 
 - Colima
 - Docker CLI
 - kubectl for Kubernetes workflows
-- Lima or `limactl` for deeper runtime diagnostics
+- Lima or `limactl` for deeper runtime diagnostics, normally installed by Homebrew with Colima
 
 ## Install dependencies
 
-Install the standard toolchain with Homebrew:
+Install the standard Docker workflow toolchain with Homebrew:
 
 ```sh
-brew install colima docker kubectl lima
+brew install colima docker
 ```
+
+Install `kubectl` only if you plan to enable Kubernetes for a Colima profile:
+
+```sh
+brew install kubectl
+```
+
+If ColimaStack diagnostics report that `limactl` is missing, install Lima explicitly with `brew install lima`.
 
 Start a default Colima profile from Terminal if you want to verify the CLI path before opening the app:
 

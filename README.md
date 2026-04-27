@@ -25,11 +25,13 @@ ColimaStack gives [Colima](https://github.com/abiosoft/colima) a focused graphic
 
 - macOS 14 or later
 - Xcode for local development
-- Homebrew-managed CLI dependencies:
+- Homebrew-managed CLI dependencies for the default Docker workflow:
 
 ```sh
-brew install colima docker kubectl lima
+brew install colima docker
 ```
+
+Install `kubectl` only for Kubernetes workflows. Homebrew normally installs Lima with Colima; if diagnostics report that `limactl` is missing, install Lima explicitly.
 
 ## Quick Start
 

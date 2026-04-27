@@ -338,8 +338,8 @@ struct ContainersScreen: View {
                             ForEach(containers) { container in
                                 RecordRow(
                                     leading: container.name.isEmpty ? container.id : container.name,
-                                    secondary: container.id,
-                                    tertiary: container.ports.isEmpty ? container.image : container.ports,
+                                    secondary: container.image,
+                                    tertiary: container.ports.isEmpty ? "No exposed ports" : container.ports,
                                     trailing: container.status.isEmpty ? container.state : container.status,
                                     tone: container.health == .healthy ? .success : container.health == .warning ? .warning : .neutral
                                 )
@@ -992,7 +992,7 @@ struct KubernetesClusterScreen: View {
                             ForEach(nodes) { node in
                                 RecordRow(
                                     leading: node.metadata.name,
-                                    secondary: node.internalIP,
+                                    secondary: node.roles.isEmpty ? "worker" : node.roles.joined(separator: ", "),
                                     tertiary: node.kubeletVersion,
                                     trailing: node.conditions["Ready"] ?? "Unknown",
                                     tone: node.health == .healthy ? .success : .warning

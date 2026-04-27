@@ -7,17 +7,19 @@ Use this guide to get from a clean macOS development machine to a visible Colima
 
 ## Prerequisites
 
-Install the command-line tools ColimaStack expects:
+Install Colima and the Docker CLI for the default Docker runtime:
 
 ```sh
-brew install colima docker kubectl
+brew install colima docker
 ```
 
-Colima also uses Lima under the hood. If your Colima installation did not install `limactl`, install Lima explicitly:
+Homebrew installs Lima as a Colima dependency. Install `kubectl` only if you plan to enable Kubernetes for a Colima profile:
 
 ```sh
-brew install lima
+brew install kubectl
 ```
+
+If ColimaStack diagnostics report that `limactl` is missing, install Lima explicitly with `brew install lima`.
 
 ## Launch ColimaStack
 
@@ -39,24 +41,8 @@ If you already use Colima, your profiles should appear automatically. Select a p
 
 To create a profile, open Profiles and choose Create Profile. Configure CPU, memory, disk, runtime, VM type, mounts, DNS, networking, and Kubernetes settings before starting it.
 
-## Verify Docker
+## Inspect runtime state
 
-After a profile is running, open Containers. You can also run a smoke-test container in Terminal:
+After a profile is running, open Containers, Images, Volumes, or Networks to inspect the Docker runtime through ColimaStack.
 
-```sh
-docker context use colima
-docker run --rm hello-world
-```
-
-For named profiles, the Docker context is usually `colima-<profile>`.
-
-## Verify Kubernetes
-
-Enable Kubernetes for the selected profile, then open the Kubernetes views. From Terminal:
-
-```sh
-kubectl config current-context
-kubectl get nodes
-```
-
-If metrics are unavailable, install or enable the Kubernetes metrics server for the cluster.
+If Kubernetes is enabled for the selected profile, open the Kubernetes views to inspect nodes, pods, deployments, and services. If metrics are unavailable, ColimaStack shows the missing data in the workspace so you can decide whether to install or enable the Kubernetes metrics server for the cluster.
