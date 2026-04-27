@@ -317,6 +317,7 @@ struct ProfileEditorView: View {
             Form {
                 Section("Profile") {
                     TextField("Name", text: $appState.editingConfiguration.name)
+                        .disabled(!appState.canEditProfileName)
                     Picker("Runtime", selection: $appState.editingConfiguration.runtime) {
                         ForEach(ColimaRuntime.allCases.filter { $0 != .unknown && $0 != .none }) { runtime in
                             Text(runtime.label).tag(runtime)
@@ -412,7 +413,7 @@ struct ProfileEditorView: View {
                     dismiss()
                 }
                 Spacer()
-                Button("Apply") {
+                Button(appState.profileEditorActionTitle) {
                     Task { await appState.saveEditingConfiguration() }
                 }
                 .keyboardShortcut(.defaultAction)

@@ -187,6 +187,28 @@ struct ColimaCLITests {
         #expect(runner.requests.last?.environment["PATH"] == "/opt/homebrew/bin:/usr/local/bin")
     }
 
+    @Test func colimaCommandsForwardCustomColimaHome() async throws {
+        let runner = FakeProcessRunner(results: [
+            "colima status --json": ProcessResult(
+                request: ProcessRequest(arguments: ["colima", "status", "--json"], environment: ["COLIMA_PROFILE": "dev"]),
+                exitCode: 0,
+                stdout: #"{"display_name":"dev","runtime":"docker","kubernetes":false}"#,
+                stderr: ""
+            )
+        ])
+        let cli = LiveColimaCLI(
+            processRunner: runner,
+            toolLocator: FakeToolLocator(urls: ["colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima")]),
+            environment: ["COLIMA_HOME": "/tmp/custom-colima-home"]
+        )
+
+        _ = try await cli.status(profile: "dev")
+
+        #expect(runner.requests.last?.environment["COLIMA_HOME"] == "/tmp/custom-colima-home")
+        #expect(runner.requests.last?.environment["COLIMA_PROFILE"] == "dev")
+        #expect(runner.requests.last?.environment["PATH"] == "/opt/homebrew/bin:/usr/local/bin")
+    }
+
     @Test func processFailuresRedactSensitiveArguments() async throws {
         let runner = ThrowingProcessRunner(
             error: ProcessRunnerError.timedOut(
@@ -320,6 +342,98 @@ struct ColimaCLITests {
         #expect(diagnostics.docker.context == "colima")
         #expect(diagnostics.docker.version == "29.2.1")
         #expect(diagnostics.docker.error.isEmpty)
+    }
+
+    @Test func diagnosticsUsesRequestedProfileForColimaStatusAndDockerContext() async throws {
+        let runner = FakeProcessRunner(results: [
+            "version": ProcessResult(
+                request: ProcessRequest(arguments: ["colima", "version"]),
+                exitCode: 0,
+                stdout: "colima version 0.10.1",
+                stderr: ""
+            ),
+            "colima status --json": ProcessResult(
+                request: ProcessRequest(arguments: ["colima", "status", "--json"], environment: ["COLIMA_PROFILE": "dev"]),
+                exitCode: 0,
+                stdout: #"{"display_name":"dev","runtime":"docker","kubernetes":false}"#,
+                stderr: ""
+            ),
+            "version --format {{.Client.Version}}": ProcessResult(
+                request: ProcessRequest(arguments: ["docker", "version", "--format", "{{.Client.Version}}"]),
+                exitCode: 0,
+                stdout: "29.2.1",
+                stderr: ""
+            ),
+            "docker context show": ProcessResult(
+                request: ProcessRequest(arguments: ["docker", "context", "show"]),
+                exitCode: 0,
+                stdout: "desktop-linux",
+                stderr: ""
+            ),
+            "--context colima-dev version --format {{.Server.Version}}": ProcessResult(
+                request: ProcessRequest(arguments: ["docker", "--context", "colima-dev", "version", "--format", "{{.Server.Version}}"]),
+                exitCode: 0,
+                stdout: "29.2.1",
+                stderr: ""
+            )
+        ])
+        let cli = LiveColimaCLI(
+            processRunner: runner,
+            toolLocator: FakeToolLocator(urls: [
+                "colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima"),
+                "docker": URL(fileURLWithPath: "/usr/local/bin/docker")
+            ])
+        )
+
+        let diagnostics = await cli.diagnostics(profile: "dev")
+
+        #expect(diagnostics.colima.profileName == "dev")
+        #expect(diagnostics.docker.available)
+        #expect(diagnostics.docker.context == "colima-dev")
+        #expect(runner.requests.contains { $0.arguments == ["status", "--json"] && $0.environment["COLIMA_PROFILE"] == "dev" })
+    }
+
+    @Test func diagnosticsReportsNonDockerSelectedProfileUnavailable() async throws {
+        let runner = FakeProcessRunner(results: [
+            "version": ProcessResult(
+                request: ProcessRequest(arguments: ["colima", "version"]),
+                exitCode: 0,
+                stdout: "colima version 0.10.1",
+                stderr: ""
+            ),
+            "colima status --json": ProcessResult(
+                request: ProcessRequest(arguments: ["colima", "status", "--json"], environment: ["COLIMA_PROFILE": "build"]),
+                exitCode: 0,
+                stdout: #"{"display_name":"build","runtime":"containerd","kubernetes":false}"#,
+                stderr: ""
+            ),
+            "version --format {{.Client.Version}}": ProcessResult(
+                request: ProcessRequest(arguments: ["docker", "version", "--format", "{{.Client.Version}}"]),
+                exitCode: 0,
+                stdout: "29.2.1",
+                stderr: ""
+            ),
+            "docker context show": ProcessResult(
+                request: ProcessRequest(arguments: ["docker", "context", "show"]),
+                exitCode: 0,
+                stdout: "colima",
+                stderr: ""
+            )
+        ])
+        let cli = LiveColimaCLI(
+            processRunner: runner,
+            toolLocator: FakeToolLocator(urls: [
+                "colima": URL(fileURLWithPath: "/opt/homebrew/bin/colima"),
+                "docker": URL(fileURLWithPath: "/usr/local/bin/docker")
+            ])
+        )
+
+        let diagnostics = await cli.diagnostics(profile: "build")
+
+        #expect(diagnostics.colima.profileName == "build")
+        #expect(!diagnostics.docker.available)
+        #expect(diagnostics.docker.error == "Colima build uses Containerd, not Docker")
+        #expect(!runner.requests.contains { $0.arguments.first == "--context" })
     }
 
     @Test func statusTreatsNotRunningAsStopped() async throws {
@@ -1007,6 +1121,33 @@ struct AppStateTests {
         #expect(state.logs.isEmpty)
     }
 
+    @Test func changingSelectedProfileClearsStaleProfilePayloadImmediately() {
+        let cli = StatefulFakeColima()
+        let oldProfile = StatefulFakeColima.profile(named: "default")
+        let state = AppState(colima: cli, profiles: [oldProfile, StatefulFakeColima.profile(named: "dev")])
+        state.selectedProfileID = "default"
+        state.selectedProfileDetail = StatefulFakeColima.detail(profile: "default")
+        state.backendSnapshot = ColimaBackendSnapshot(
+            profile: oldProfile,
+            status: StatefulFakeColima.detail(profile: "default"),
+            docker: nil,
+            kubernetes: nil,
+            metrics: [],
+            issues: [BackendIssue(severity: .warning, source: .docker, title: "Old issue", message: "stale")],
+            collectedAt: Date()
+        )
+        state.backendIssues = state.backendSnapshot?.issues ?? []
+        state.logs = "old logs"
+
+        state.selectedProfileID = "dev"
+
+        #expect(state.selectedProfileDetail == nil)
+        #expect(state.backendSnapshot == nil)
+        #expect(state.backendIssues.isEmpty)
+        #expect(state.logs.isEmpty)
+        #expect(!state.backendSearchIndex.results.contains { $0.title == "Old issue" })
+    }
+
     @Test func refreshGenericListFailureSurfacesError() async {
         let cli = StatefulFakeColima()
         cli.listError = TestError(message: "list failed")
@@ -1066,6 +1207,35 @@ struct AppStateTests {
             Issue.record("Expected failed command entry")
             return
         }
+    }
+
+    @Test func createProfileRejectsDuplicateSelectedProfileName() async {
+        let cli = StatefulFakeColima()
+        let state = AppState(colima: cli, profiles: [StatefulFakeColima.profile(named: "default")])
+        state.selectedProfileID = "default"
+        state.createProfile()
+        state.editingConfiguration.name = "default"
+
+        await state.saveEditingConfiguration()
+
+        #expect(state.presentedError?.message == "A profile named 'default' already exists.")
+        #expect(state.isShowingProfileEditor)
+        #expect(cli.startedConfigurations.isEmpty)
+    }
+
+    @Test func editProfileRejectsRenamedConfiguration() async {
+        let cli = StatefulFakeColima()
+        let state = AppState(colima: cli, profiles: [StatefulFakeColima.profile(named: "default")])
+        state.profileEditorMode = .edit(profileID: "default")
+        state.isShowingProfileEditor = true
+        state.editingConfiguration = .default
+        state.editingConfiguration.name = "renamed"
+
+        await state.saveEditingConfiguration()
+
+        #expect(state.presentedError?.message == "Profile renaming is not supported. Keep the name 'default' or create a new profile.")
+        #expect(state.isShowingProfileEditor)
+        #expect(cli.startedConfigurations.isEmpty)
     }
 }
 
@@ -1157,12 +1327,14 @@ final class StatefulFakeColima: ColimaControlling {
     var commandError: Error?
     var logsText = "ready"
     var storedConfigurations: [String: ProfileConfiguration] = [:]
+    private(set) var startedConfigurations: [ProfileConfiguration] = []
 
-    func diagnostics() async -> DiagnosticReport {
-        DiagnosticReport(
+    func diagnostics(profile: String?) async -> DiagnosticReport {
+        let profileName = profile ?? "default"
+        return DiagnosticReport(
             tools: [ToolCheck(id: "colima", availability: .available(path: "/opt/homebrew/bin/colima", version: "test"))],
-            colima: ColimaRuntimeStatus(profileName: "default", state: .running, output: "", error: ""),
-            docker: DockerStatus(available: true, context: "colima", version: "test", error: ""),
+            colima: ColimaRuntimeStatus(profileName: profileName, state: .running, output: "", error: ""),
+            docker: DockerStatus(available: true, context: profileName == "default" ? "colima" : "colima-\(profileName)", version: "test", error: ""),
             messages: []
         )
     }
@@ -1181,7 +1353,10 @@ final class StatefulFakeColima: ColimaControlling {
         if let logsError { throw logsError }
         return logsText
     }
-    func start(_ configuration: ProfileConfiguration) async throws -> ProcessResult { try result("start") }
+    func start(_ configuration: ProfileConfiguration) async throws -> ProcessResult {
+        startedConfigurations.append(configuration)
+        return try result("start")
+    }
     func stop(profile: String) async throws -> ProcessResult { try result("stop") }
     func restart(profile: String) async throws -> ProcessResult { try result("restart") }
     func delete(profile: String) async throws -> ProcessResult { try result("delete") }

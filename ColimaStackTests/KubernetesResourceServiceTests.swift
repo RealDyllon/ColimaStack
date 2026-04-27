@@ -6,7 +6,7 @@ import Testing
 struct KubernetesResourceServiceTests {
     @Test func explicitContextIsUsedForEveryKubectlReadAndReportedInSnapshot() async throws {
         let runner = FakeKubernetesCommandRunner(results: [
-            "config current-context": .success(.kubectl(arguments: ["config", "current-context"], stdout: "desktop-linux\n")),
+            "--context colima-dev config current-context": .success(.kubectl(arguments: ["--context", "colima-dev", "config", "current-context"], stdout: "desktop-linux\n")),
             "--context colima-dev get nodes -o json": .success(.kubectl(arguments: ["--context", "colima-dev", "get", "nodes", "-o", "json"], stdout: Self.listJSON())),
             "--context colima-dev get namespaces -o json": .success(.kubectl(arguments: ["--context", "colima-dev", "get", "namespaces", "-o", "json"], stdout: Self.listJSON())),
             "--context colima-dev get pods --all-namespaces -o json": .success(.kubectl(arguments: ["--context", "colima-dev", "get", "pods", "--all-namespaces", "-o", "json"], stdout: Self.listJSON())),
@@ -20,8 +20,8 @@ struct KubernetesResourceServiceTests {
         let snapshot = try await service.snapshot(context: "colima-dev")
 
         #expect(snapshot.context == "colima-dev")
-        #expect(runner.requests.first?.arguments == ["--context", "colima-dev", "config", "current-context"])
-        #expect(runner.requests.dropFirst().allSatisfy { $0.arguments.starts(with: ["--context", "colima-dev"]) })
+        #expect(runner.requests.contains { $0.arguments == ["--context", "colima-dev", "config", "current-context"] })
+        #expect(runner.requests.allSatisfy { $0.arguments.starts(with: ["--context", "colima-dev"]) })
     }
 
     @Test func loadSnapshotFailsWhenClusterIsUnavailableForEveryKubectlCommand() async {

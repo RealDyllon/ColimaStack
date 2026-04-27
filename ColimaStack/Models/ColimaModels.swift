@@ -206,8 +206,17 @@ nonisolated struct DockerStatus: Hashable, Sendable {
 nonisolated struct ColimaRuntimeStatus: Hashable, Sendable {
     var profileName: String
     var state: ProfileState
+    var runtime: ColimaRuntime?
     var output: String
     var error: String
+
+    init(profileName: String, state: ProfileState, runtime: ColimaRuntime? = nil, output: String, error: String) {
+        self.profileName = profileName
+        self.state = state
+        self.runtime = runtime
+        self.output = output
+        self.error = error
+    }
 }
 
 nonisolated struct DiagnosticReport: Hashable, Sendable {

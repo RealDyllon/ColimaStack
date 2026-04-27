@@ -35,7 +35,7 @@ enum ColimaCLIError: LocalizedError, Sendable, Equatable {
 }
 
 protocol ColimaCLI {
-    func diagnostics() async -> DiagnosticReport
+    func diagnostics(profile: String?) async -> DiagnosticReport
     func listProfiles() async throws -> [ColimaProfile]
     func status(profile: String) async throws -> ColimaStatusDetail
     func logs(profile: String) async throws -> String
@@ -47,6 +47,12 @@ protocol ColimaCLI {
     func update(profile: String) async throws -> ProcessResult
     func template() async throws -> String
     func configuration(profile: String) async throws -> ProfileConfiguration?
+}
+
+extension ColimaCLI {
+    func diagnostics() async -> DiagnosticReport {
+        await diagnostics(profile: nil)
+    }
 }
 
 struct LiveColimaCLI: ColimaCLI {
@@ -75,9 +81,10 @@ struct LiveColimaCLI: ColimaCLI {
         self.executionMode = executionMode
     }
 
-    func diagnostics() async -> DiagnosticReport {
+    func diagnostics(profile explicitProfile: String? = nil) async -> DiagnosticReport {
         let tools = await toolChecks(["colima", "docker", "kubectl", "limactl"])
-        let colimaStatus = await colimaRuntimeStatus(from: tools)
+        let profile = resolvedProfileName(explicitProfile)
+        let colimaStatus = await colimaRuntimeStatus(from: tools, profile: profile)
         let dockerStatus = await dockerStatus(from: tools, colimaStatus: colimaStatus)
         var messages: [String] = []
         if let kubectlURL = toolURL(named: "kubectl", in: tools) {
@@ -345,11 +352,14 @@ struct LiveColimaCLI: ColimaCLI {
 
     private func environmentWithToolSearchPath(_ overrides: [String: String]) -> [String: String] {
         let searchPath = toolLocator.searchPaths().joined(separator: ":")
+        var environment = overrides
+        if let colimaHome = self.environment["COLIMA_HOME"], !colimaHome.isEmpty {
+            environment["COLIMA_HOME"] = colimaHome
+        }
         guard !searchPath.isEmpty else {
-            return overrides
+            return environment
         }
 
-        var environment = overrides
         environment["PATH"] = searchPath
         return environment
     }
@@ -407,8 +417,7 @@ struct LiveColimaCLI: ColimaCLI {
         return ToolCheck(id: toolName, availability: .available(path: toolURL.path, version: EnvironmentRedactor.redacted(displayVersion(for: toolName, output: output))))
     }
 
-    private func colimaRuntimeStatus(from tools: [ToolCheck]) async -> ColimaRuntimeStatus {
-        let profile = resolvedProfileName(nil)
+    private func colimaRuntimeStatus(from tools: [ToolCheck], profile: String) async -> ColimaRuntimeStatus {
         guard toolURL(named: "colima", in: tools) != nil else {
             return ColimaRuntimeStatus(profileName: profile, state: .unknown, output: "", error: "Colima CLI not found")
         }
@@ -419,7 +428,7 @@ struct LiveColimaCLI: ColimaCLI {
             let detail = try? ColimaOutputParser().parseStatus(output, profile: profile)
             let state = detail?.state ?? ProfileState.inferred(from: output)
             let error = entry.terminationStatus == 0 ? "" : output
-            return ColimaRuntimeStatus(profileName: profile, state: state, output: output, error: error)
+            return ColimaRuntimeStatus(profileName: profile, state: state, runtime: detail?.runtime, output: output, error: error)
         } catch {
             return ColimaRuntimeStatus(profileName: profile, state: .unknown, output: "", error: EnvironmentRedactor.redacted(error.localizedDescription))
         }
@@ -433,6 +442,9 @@ struct LiveColimaCLI: ColimaCLI {
         if colimaStatus.state != .running {
             let version = await commandOutput(executableURL: dockerURL, arguments: ["version", "--format", "{{.Server.Version}}"], timeout: 8)
             return DockerStatus(available: false, context: context.output, version: version.output, error: "Colima \(colimaStatus.profileName) is \(colimaStatus.state.label.lowercased())")
+        }
+        if let runtime = colimaStatus.runtime, runtime != .docker {
+            return DockerStatus(available: false, context: context.output, version: "", error: "Colima \(colimaStatus.profileName) uses \(runtime.label), not Docker")
         }
         let expectedContext = colimaStatus.profileName == "default" ? "colima" : "colima-\(colimaStatus.profileName)"
         let version = await commandOutput(executableURL: dockerURL, arguments: ["--context", expectedContext, "version", "--format", "{{.Server.Version}}"], timeout: 8)

@@ -144,6 +144,7 @@ nonisolated struct BackendSearchIndex: Hashable, Codable, Sendable {
             .lowercased()
             .split(whereSeparator: \.isWhitespace)
             .map(String.init)
+        let normalizedQuery = normalizedSearchText(query.text)
 
         guard !terms.isEmpty else {
             return visibleResults
@@ -155,7 +156,7 @@ nonisolated struct BackendSearchIndex: Hashable, Codable, Sendable {
                 let matches = terms.filter { haystack.contains($0) }.count
                 guard matches > 0 else { return nil }
                 var scored = result
-                scored.score = Double(matches) / Double(terms.count)
+                scored.score = Double(matches) / Double(terms.count) + titleMatchBoost(result.title, query: normalizedQuery)
                 return scored
             }
             .sorted { lhs, rhs in
@@ -169,6 +170,28 @@ nonisolated struct BackendSearchIndex: Hashable, Codable, Sendable {
     private func isStoppedColimaProfile(_ result: BackendSearchResult) -> Bool {
         guard result.source == .colima, result.kind == .profile else { return false }
         return result.profileState == .stopped
+    }
+
+    private func titleMatchBoost(_ title: String, query: String) -> Double {
+        let normalizedTitle = normalizedSearchText(title)
+        guard !normalizedTitle.isEmpty, !query.isEmpty else { return 0 }
+        if normalizedTitle == query {
+            return 2
+        }
+        if normalizedTitle.split(whereSeparator: \.isWhitespace).contains(where: { String($0) == query }) {
+            return 1
+        }
+        if normalizedTitle.contains(query) {
+            return 0.5
+        }
+        return 0
+    }
+
+    private func normalizedSearchText(_ value: String) -> String {
+        value
+            .lowercased()
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 }
 

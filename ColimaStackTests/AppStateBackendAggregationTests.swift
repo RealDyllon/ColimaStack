@@ -252,6 +252,52 @@ struct AppStateBackendAggregationTests {
         #expect(results.map(\.title) == ["default"])
     }
 
+    @Test func searchRanksExactTitleMatchesBeforeTokenOnlyMatches() {
+        let index = BackendSearchIndex(
+            collectedAt: Date(),
+            results: [
+                BackendSearchResult(
+                    id: "token-only",
+                    kind: .container,
+                    source: .docker,
+                    title: "aardvark",
+                    subtitle: "",
+                    tokens: ["api"],
+                    score: 0
+                ),
+                BackendSearchResult(
+                    id: "exact-title",
+                    kind: .container,
+                    source: .docker,
+                    title: "api",
+                    subtitle: "",
+                    tokens: [],
+                    score: 0
+                )
+            ]
+        )
+
+        let results = index.search(.init(text: "api"))
+
+        #expect(results.map(\.title) == ["api", "aardvark"])
+        #expect((results.first?.score ?? 0) > (results.last?.score ?? 0))
+    }
+
+    @Test func backendSnapshotSkipsDockerLoadForNonDockerProfiles() async {
+        let docker = RecordingDockerResourceProvider()
+        let kubernetes = EmptyKubernetesResourceProvider()
+        let service = LiveBackendSnapshotService(dockerService: docker, kubernetesService: kubernetes)
+        var profile = Self.profile(named: "build", state: .running)
+        profile.runtime = .containerd
+        var status = Self.detail(profile: "build", state: .running)
+        status.runtime = .containerd
+
+        let snapshot = await service.snapshot(profile: profile, status: status)
+
+        #expect(docker.contexts.isEmpty)
+        #expect(snapshot.docker == nil)
+    }
+
     fileprivate static func profile(named name: String, state: ProfileState) -> ColimaProfile {
         ColimaProfile(
             name: name,
@@ -335,6 +381,66 @@ private final class RecordingBackendSnapshotProvider: BackendSnapshotProviding {
     }
 }
 
+private final class RecordingDockerResourceProvider: DockerResourceProviding {
+    private(set) var contexts: [String?] = []
+
+    func loadSnapshot(context: String?) async -> ResourceLoadState<DockerResourceSnapshot> {
+        contexts.append(context)
+        return .loaded(
+            DockerResourceSnapshot(
+                context: context ?? "",
+                collectedAt: Date(),
+                containers: [],
+                images: [],
+                volumes: [],
+                networks: [],
+                stats: [],
+                diskUsage: [],
+                issues: [],
+                commandRuns: []
+            ),
+            updatedAt: Date()
+        )
+    }
+
+    func snapshot(context: String?) async throws -> DockerResourceSnapshot {
+        contexts.append(context)
+        return DockerResourceSnapshot(
+            context: context ?? "",
+            collectedAt: Date(),
+            containers: [],
+            images: [],
+            volumes: [],
+            networks: [],
+            stats: [],
+            diskUsage: [],
+            issues: [],
+            commandRuns: []
+        )
+    }
+}
+
+private struct EmptyKubernetesResourceProvider: KubernetesResourceProviding {
+    func loadSnapshot(context: String?) async -> ResourceLoadState<KubernetesResourceSnapshot> {
+        .idle
+    }
+
+    func snapshot(context: String?) async throws -> KubernetesResourceSnapshot {
+        KubernetesResourceSnapshot(
+            context: context ?? "",
+            collectedAt: Date(),
+            nodes: [],
+            namespaces: [],
+            pods: [],
+            services: [],
+            deployments: [],
+            metrics: [],
+            issues: [],
+            commandRuns: []
+        )
+    }
+}
+
 @MainActor
 private final class RecordingFakeColima: ColimaControlling {
     var profiles: [ColimaProfile]
@@ -356,7 +462,7 @@ private final class RecordingFakeColima: ColimaControlling {
         self.profiles = profiles ?? [AppStateBackendAggregationTests.profile(named: "default", state: .running)]
     }
 
-    func diagnostics() async -> DiagnosticReport { .empty }
+    func diagnostics(profile: String?) async -> DiagnosticReport { .empty }
 
     func listProfiles() async throws -> [ColimaProfile] { profiles }
 

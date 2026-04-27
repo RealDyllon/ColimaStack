@@ -253,7 +253,7 @@ struct LiveBackendSnapshotService: BackendSnapshotProviding {
     }
 
     func snapshot(profile: ColimaProfile, status: ColimaStatusDetail) async -> ColimaBackendSnapshot {
-        async let dockerLoad = dockerService.loadSnapshot(context: status.dockerContext.isEmpty ? profile.dockerContext : status.dockerContext)
+        async let dockerLoad = loadDockerSnapshot(profile: profile, status: status)
         async let kubernetesLoad = status.kubernetes.enabled
             ? kubernetesService.loadSnapshot(context: status.kubernetes.context.nonEmpty)
             : ResourceLoadState<KubernetesResourceSnapshot>.idle
@@ -280,5 +280,12 @@ struct LiveBackendSnapshotService: BackendSnapshotProviding {
             issues: issues,
             collectedAt: Date()
         )
+    }
+
+    private func loadDockerSnapshot(profile: ColimaProfile, status: ColimaStatusDetail) async -> ResourceLoadState<DockerResourceSnapshot> {
+        guard (status.runtime ?? profile.runtime) == .docker else {
+            return .idle
+        }
+        return await dockerService.loadSnapshot(context: status.dockerContext.isEmpty ? profile.dockerContext : status.dockerContext)
     }
 }

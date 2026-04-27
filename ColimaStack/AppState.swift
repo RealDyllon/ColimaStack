@@ -26,11 +26,20 @@ enum AutoRefreshFrequency: String, CaseIterable, Identifiable {
     }
 }
 
+enum ProfileEditorMode: Equatable {
+    case create
+    case edit(profileID: ColimaProfile.ID)
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var profiles: [ColimaProfile]
     @Published var selectedProfileID: ColimaProfile.ID? {
-        didSet { persistSelectedProfileID() }
+        didSet {
+            persistSelectedProfileID()
+            guard oldValue != selectedProfileID else { return }
+            clearSelectedProfilePayload()
+        }
     }
     @Published var selectedSection: WorkspaceRoute = .overview {
         didSet { userDefaults?.set(selectedSection.rawValue, forKey: DefaultsKey.selectedSection) }
@@ -48,6 +57,7 @@ final class AppState: ObservableObject {
     @Published var activeOperation: String?
     @Published var presentedError: AppError?
     @Published var isShowingProfileEditor = false
+    @Published var profileEditorMode: ProfileEditorMode?
     @Published var editingConfiguration: ProfileConfiguration = .default
     @Published var autoRefresh = true {
         didSet { userDefaults?.set(autoRefresh, forKey: DefaultsKey.autoRefresh) }
@@ -119,6 +129,20 @@ final class AppState: ObservableObject {
         } ?? false
     }
 
+    var canEditProfileName: Bool {
+        if case .edit = profileEditorMode {
+            return false
+        }
+        return true
+    }
+
+    var profileEditorActionTitle: String {
+        if case .create = profileEditorMode {
+            return "Create"
+        }
+        return "Apply"
+    }
+
     func launch() async {
         await refreshAll()
     }
@@ -142,8 +166,8 @@ final class AppState: ObservableObject {
         let generation = refreshGeneration
         isRefreshing = true
         defer { isRefreshing = false }
-        diagnostics = await colima.diagnostics()
-        hasCompletedDiagnostics = true
+        let initialDiagnosticsProfile = selectedProfileID
+        await refreshDiagnostics(profile: initialDiagnosticsProfile, generation: generation)
         do {
             let previousProfiles = profiles
             let freshProfiles = try await colima.listProfiles()
@@ -153,6 +177,10 @@ final class AppState: ObservableObject {
                 selectedProfileID = persistedSelectedProfileID(in: profiles) ?? profiles.first?.id
             }
             if let selectedProfileID {
+                if selectedProfileID != initialDiagnosticsProfile {
+                    await refreshDiagnostics(profile: selectedProfileID, generation: generation)
+                    guard generation == refreshGeneration else { return }
+                }
                 await refreshProfile(selectedProfileID, generation: generation)
             }
         } catch ColimaCLIError.missingColima {
@@ -205,7 +233,16 @@ final class AppState: ObservableObject {
 
     func refreshProfile(_ profile: String) async {
         refreshGeneration += 1
-        await refreshProfile(profile, generation: refreshGeneration)
+        let generation = refreshGeneration
+        await refreshDiagnostics(profile: profile, generation: generation)
+        await refreshProfile(profile, generation: generation)
+    }
+
+    private func refreshDiagnostics(profile: String?, generation: Int) async {
+        let report = await colima.diagnostics(profile: profile)
+        guard generation == refreshGeneration else { return }
+        diagnostics = report
+        hasCompletedDiagnostics = true
     }
 
     private func refreshProfile(_ profile: String, generation: Int) async {
@@ -293,6 +330,8 @@ final class AppState: ObservableObject {
 
     func createProfile() {
         profileEditorTask?.cancel()
+        profileEditorTask = nil
+        profileEditorMode = .create
         editingConfiguration = .default
         isShowingProfileEditor = true
     }
@@ -304,6 +343,7 @@ final class AppState: ObservableObject {
             guard let self else { return }
             editingConfiguration = await configuration(for: profile)
             guard !Task.isCancelled, selectedProfileID == profile.id else { return }
+            profileEditorMode = .edit(profileID: profile.id)
             isShowingProfileEditor = true
         }
     }
@@ -311,6 +351,7 @@ final class AppState: ObservableObject {
     func cancelProfileEditing() {
         profileEditorTask?.cancel()
         profileEditorTask = nil
+        profileEditorMode = nil
         isShowingProfileEditor = false
     }
 
@@ -331,14 +372,27 @@ final class AppState: ObservableObject {
 
     func saveEditingConfiguration() async {
         let configuration = editingConfiguration
-        if profiles.contains(where: { $0.name == configuration.name && $0.id != selectedProfileID }) {
-            presentedError = AppError(message: "A profile named '\(configuration.name)' already exists.")
-            return
+        let mode = profileEditorMode ?? .create
+        let commandLabel: String
+        switch mode {
+        case .create:
+            if profiles.contains(where: { $0.name == configuration.name }) {
+                presentedError = AppError(message: "A profile named '\(configuration.name)' already exists.")
+                return
+            }
+            commandLabel = "Create \(configuration.name)"
+        case let .edit(profileID):
+            guard configuration.name == profileID else {
+                presentedError = AppError(message: "Profile renaming is not supported. Keep the name '\(profileID)' or create a new profile.")
+                return
+            }
+            commandLabel = "Apply \(profileID)"
         }
-        let succeeded = await runCommand("Apply \(configuration.name)") { try await colima.start(configuration) }
+        let succeeded = await runCommand(commandLabel) { try await colima.start(configuration) }
         if succeeded {
             profileEditorTask?.cancel()
             profileEditorTask = nil
+            profileEditorMode = nil
             isShowingProfileEditor = false
         }
     }
@@ -399,6 +453,14 @@ final class AppState: ObservableObject {
         } else {
             userDefaults?.removeObject(forKey: DefaultsKey.selectedProfileID)
         }
+    }
+
+    private func clearSelectedProfilePayload() {
+        selectedProfileDetail = nil
+        backendSnapshot = nil
+        backendIssues = []
+        logs = ""
+        rebuildSearchIndex()
     }
 
     private func appendMonitorSample(from snapshot: ColimaBackendSnapshot) {
