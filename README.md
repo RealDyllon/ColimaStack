@@ -3,10 +3,10 @@
 </p>
 
 <p align="center">
-  A native macOS control center for Colima profiles, Docker resources, and Kubernetes development clusters.
+  A macOS workspace for Colima profiles, Docker resources, and Kubernetes development clusters.
 </p>
 
-ColimaStack gives [Colima](https://github.com/abiosoft/colima) a focused graphical workspace for local container development. It helps you inspect runtime health, manage profiles, browse Docker inventory, view Kubernetes resources, and diagnose toolchain issues without hiding the command-line tools doing the work.
+ColimaStack gives [Colima](https://github.com/abiosoft/colima) a graphical workspace for local container development. It helps inspect runtime health, manage profiles, browse Docker inventory, view Kubernetes resources, and diagnose toolchain issues while keeping the command-line tools visible.
 
 > [!NOTE]
 > ColimaStack is not a container engine. It controls and inspects local tools such as `colima`, `docker`, `kubectl`, and `limactl`.
@@ -40,6 +40,8 @@ Useful docs entry points:
 
 - [Quick Start](https://colimastack.dyllon.io/quick-start/)
 - [Install](https://colimastack.dyllon.io/install/)
+- [Compatibility](https://colimastack.dyllon.io/compatibility/)
+- [Security & Privacy](https://colimastack.dyllon.io/security-privacy/)
 - [Architecture](https://colimastack.dyllon.io/architecture/)
 - [Command API](https://colimastack.dyllon.io/reference/command-api/)
 
@@ -53,4 +55,4 @@ Most profile-scoped operations use the `COLIMA_PROFILE` environment variable so 
 
 ## Current Scope
 
-This repository contains the macOS app, tests, and documentation for the current launch surface. Some documented workflows still require final smoke testing against a live Colima installation before release.
+This repository contains the macOS app, tests, and documentation. Build from source is the documented app acquisition path unless a future release provides a public Developer ID artifact.

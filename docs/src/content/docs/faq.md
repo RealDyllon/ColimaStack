@@ -1,28 +1,32 @@
 ---
 title: Frequently Asked Questions
-description: Common questions about ColimaStack, Colima, Docker contexts, and Kubernetes support.
+description: Common questions about ColimaStack, Colima, Docker contexts, Kubernetes, and releases.
 ---
 
 ## Is ColimaStack a replacement for Colima?
 
-No. ColimaStack is a native macOS app for managing and observing Colima. Colima remains the runtime provider.
+No. ColimaStack depends on Colima. It invokes `colima` for profile lifecycle operations and reads Colima profile status/files.
 
 ## Does ColimaStack include Docker?
 
-No. Install the Docker CLI separately. ColimaStack uses Docker commands to read containers, images, volumes, networks, stats, and disk usage from the selected Colima context.
+No. Docker inventory requires the Docker CLI and a running Docker-backed Colima profile.
 
 ## Can I use multiple Colima profiles?
 
-Yes. ColimaStack lists profiles and scopes operations through `COLIMA_PROFILE`. Docker context names are derived from the selected profile.
+Yes. Profiles returned by `colima list --json` appear in the sidebar and `Profiles` view. Named Docker contexts usually follow `colima-<profile>`.
 
 ## Does Kubernetes work?
 
-ColimaStack supports Colima's Kubernetes lifecycle toggle and Kubernetes inventory views. Metrics depend on the cluster having metrics support available.
+Yes, when Kubernetes is enabled on the selected Colima profile and `kubectl` can reach the selected context. Metrics require `kubectl top` support.
+
+## Is there a public notarized app bundle?
+
+The repository does not currently document a verified public Developer ID app bundle. Use [Install](/install/) to build from source.
+
+## Does ColimaStack send telemetry?
+
+The reviewed source does not show telemetry code. It does run local CLIs, read local Colima files, and keep local in-memory state for UI/search. See [Security & Privacy](/security-privacy/).
 
 ## Can I still use the terminal?
 
-Yes. ColimaStack is designed to keep CLI behavior visible. It surfaces command activity, output, logs, and recovery messages so the GUI does not become a black box.
-
-## Is this the same kind of product as OrbStack?
-
-It is adjacent, but not identical. OrbStack bundles its own Docker, Kubernetes, Linux machine, networking, and app experience. ColimaStack builds a polished GUI and observability layer around the open-source Colima toolchain.
+Yes. ColimaStack uses the same local command-line tools. Refresh the app after changing resources from Terminal.

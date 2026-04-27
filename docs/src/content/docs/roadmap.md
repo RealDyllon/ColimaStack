@@ -1,37 +1,22 @@
 ---
-title: What's New and Roadmap
-description: Current launch scope and the documentation areas that should be expanded next.
+title: Maintainer Roadmap
+description: Internal documentation and product follow-up items for maintainers.
 ---
 
-This page tracks the documentation and product areas that should evolve after the initial Starlight site is published.
+This is a maintainer page, not end-user setup guidance.
 
-## Launch documentation
+## Documentation follow-up
 
-The first documentation release should cover:
+- Add more screenshots after a repeatable screenshot workflow is available.
+- Verify clean-machine install behavior when a public signed and notarized release exists.
+- Add issue-driven troubleshooting entries after real user reports.
+- Keep comparisons date-stamped and source-limited.
 
-- installation and dependency setup
-- quick start for existing Colima users
-- profile lifecycle and configuration
-- Docker resource inventory
-- Kubernetes visibility
-- diagnostics and command recovery
-- comparisons with OrbStack, Docker Desktop, and raw Colima CLI usage
-- command API reference
-- release-readiness checklist
+## Product follow-up candidates
 
-## Next documentation gaps
+- Docker container mutation actions only if implemented in source.
+- Kubernetes mutation actions only if implemented in source.
+- Containerd, Incus, nerdctl, and other runtime surfaces only if promoted to first-class app views.
+- Release/update channel documentation only after it exists.
 
-- Screenshots for every major view.
-- Exact supported macOS versions.
-- Download and update channel once distribution is finalized.
-- Security model for command execution and file access.
-- Notarization and first-run Gatekeeper notes.
-- Known limitations against specific Colima versions.
-- Troubleshooting guides based on real user reports.
-
-## Product documentation candidates
-
-- Container action details such as start, restart, delete, inspect, logs, and file access.
-- Kubernetes reset and advanced cluster operations if exposed in the UI.
-- Nerdctl, containerd, Incus, and model command support if added as first-class workflows.
-- Team onboarding guide for replacing Docker Desktop with Colima plus ColimaStack.
+See [Screenshot Checklist](/contributing/screenshot-checklist/) and [Release Readiness](/contributing/release-readiness/).

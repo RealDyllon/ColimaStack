@@ -1,22 +1,31 @@
 ---
 title: Efficiency
-description: How ColimaStack helps keep local runtime resource usage visible.
+description: Use ColimaStack views to identify local runtime allocation and usage.
 ---
 
-ColimaStack does not change Colima's resource model, but it makes the current allocation and runtime load easier to see.
+ColimaStack does not change Colima's resource model. It makes configured allocation and Docker-reported usage visible for the selected profile.
 
 ## Profile resources
 
-Each profile exposes its configured CPU, memory, and disk values. Use profile configuration to reduce allocations when a project does not need the default resources.
+`Overview`, `Profiles`, and `Monitor` show configured CPU, memory, and disk values when Colima status/configuration provides them. Change allocations from the profile editor.
 
 ## Runtime stats
 
-The Monitor view records runtime usage samples from Docker stats and Docker disk usage. This helps identify containers that are consuming unexpected CPU, memory, or disk.
+`Monitor` builds samples from Docker stats and Docker disk usage:
+
+- CPU percent
+- memory usage
+- disk usage from `docker system df`
+- network receive/transmit totals and rates
+- block read/write totals
+- running container count
+
+Monitor history is capped at 90 samples per profile.
 
 ## Idle profiles
 
-Stop profiles when they are not needed. ColimaStack keeps lifecycle actions close to the resource views so cleanup does not require switching to a terminal.
+Stopped profiles do not populate Docker or Kubernetes backend snapshots. Use `Profiles`, the toolbar, or the menu bar to stop profiles that are not needed.
 
 ## Disk usage
 
-Use Images and Volumes to find large local artifacts. Docker system disk usage is included in backend snapshots where available.
+Use `Images`, `Volumes`, and `Monitor` to inspect image records, Docker-managed volumes, profile mounts, and Docker disk usage. Cleanup still happens through Docker/Colima CLI commands outside the current app UI.
