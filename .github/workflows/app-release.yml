@@ -47,38 +47,43 @@ jobs:
   app-smoke-tests:
     name: App Smoke Tests (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
+    needs: build
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         runner: [macos-14, macos-15, macos-26]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Show runner toolchain
+      - name: Show runner platform
         run: |
           sw_vers
-          xcodebuild -version
 
-      - name: Build app for launch test
+      - name: Download app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: smoke-assets
+
+      - name: Expand app artifact
+        shell: bash
         run: |
-          xcodebuild build \
-            -project "$PROJECT_PATH" \
-            -scheme "$SCHEME" \
-            -configuration Debug \
-            -destination 'platform=macOS' \
-            -derivedDataPath "build/DerivedData-${{ matrix.runner }}" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY=""
+          set -euo pipefail
+
+          archive_path="smoke-assets/${{ needs.build.outputs.artifact_name }}.zip"
+          if [[ ! -f "$archive_path" ]]; then
+            echo "Expected app archive not found at $archive_path" >&2
+            exit 1
+          fi
+
+          mkdir -p smoke-app
+          ditto -x -k "$archive_path" smoke-app
 
       - name: Launch app
         shell: bash
         run: |
           set -euo pipefail
 
-          app_path="build/DerivedData-${{ matrix.runner }}/Build/Products/Debug/${APP_NAME}.app"
+          app_path="smoke-app/${APP_NAME}.app"
           executable="$app_path/Contents/MacOS/${APP_NAME}"
           log_path="$RUNNER_TEMP/${APP_NAME}-${{ matrix.runner }}.log"
 
