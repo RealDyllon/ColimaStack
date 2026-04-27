@@ -9,7 +9,7 @@
 ColimaStack gives [Colima](https://github.com/abiosoft/colima) a focused graphical workspace for local container development. It helps you inspect runtime health, manage profiles, browse Docker inventory, view Kubernetes resources, and diagnose toolchain issues without hiding the command-line tools doing the work.
 
 > [!NOTE]
-> ColimaStack is not a container engine. It controls and inspects local tools such as `colima`, `docker`, `kubectl`, and `limactl`.
+> ColimaStack is not a container engine. It controls and inspects local tools such as `colima`, plus optional integrations like `docker`, `kubectl`, and `limactl` when those tools are installed.
 
 ## Features
 
@@ -17,20 +17,30 @@ ColimaStack gives [Colima](https://github.com/abiosoft/colima) a focused graphic
 - **Runtime overview**: view profile state, Docker context, socket, address, resources, Kubernetes status, recent activity, and logs.
 - **Docker inventory**: browse containers, images, volumes, networks, runtime stats, and Docker disk usage.
 - **Kubernetes visibility**: inspect nodes, namespaces, pods, deployments, services, and metrics when Kubernetes is enabled.
-- **Diagnostics**: check `colima`, `docker`, `kubectl`, `limactl`, Docker context, and Kubernetes context health.
+- **Diagnostics**: check `colima`, optional tool availability, Docker context, and Kubernetes context health.
 - **Command transparency**: review active operations, command history, stdout, stderr, and Colima daemon logs.
 - **Menu bar access**: check runtime state and jump back into the main workspace from the macOS menu bar.
 
 ## Requirements
 
 - macOS 14 or later
-- Homebrew-managed CLI dependencies for the default Docker workflow:
+- Homebrew-managed Colima CLI:
 
 ```sh
-brew install colima docker
+brew install colima
 ```
 
-Install `kubectl` only for Kubernetes workflows. Homebrew normally installs Lima with Colima; if diagnostics report that `limactl` is missing, install Lima explicitly.
+Optional tools unlock additional views and diagnostics:
+
+- Install the Docker CLI only if you want Docker runtime inventory such as containers, images, volumes, networks, stats, and disk usage.
+- Install `kubectl` only for Kubernetes workflows.
+- Homebrew normally installs Lima with Colima; if diagnostics report that `limactl` is missing, install Lima explicitly.
+
+```sh
+brew install docker
+brew install kubectl
+brew install lima
+```
 
 ## Documentation
 
@@ -47,7 +57,7 @@ If you want to contribute, see [CONTRIBUTING.md](CONTRIBUTING.md) for local deve
 
 ## How It Works
 
-ColimaStack is a local-first macOS app. It calls the Colima CLI for profile lifecycle operations, uses Docker CLI JSON output for runtime inventory, reads Kubernetes state through `kubectl`, and loads selected Colima files such as profile configuration, SSH config, and daemon logs.
+ColimaStack is a local-first macOS app. It calls the Colima CLI for profile lifecycle operations, uses Docker CLI JSON output for Docker runtime inventory when the Docker CLI is installed, reads Kubernetes state through `kubectl` when Kubernetes support is installed, and loads selected Colima files such as profile configuration, SSH config, and daemon logs.
 
 Most profile-scoped operations use the `COLIMA_PROFILE` environment variable so the active app selection maps directly to the intended Colima runtime.
 

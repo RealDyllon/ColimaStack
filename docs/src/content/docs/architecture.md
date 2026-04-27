@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: How ColimaStack connects the macOS app, Colima CLI, Docker CLI, kubectl, and local Colima files.
+description: How ColimaStack connects the macOS app, Colima CLI, optional Docker CLI and kubectl integrations, and local Colima files.
 ---
 
 ColimaStack is a native macOS GUI backed by local command-line tools and file-backed Colima configuration.
@@ -26,7 +26,7 @@ Most profile-scoped operations use the `COLIMA_PROFILE` environment variable.
 
 ## Docker inventory
 
-Docker resources are read through the Docker CLI using JSON output where available:
+When the Docker CLI is installed and the selected profile uses the Docker runtime, Docker resources are read through JSON output where available:
 
 - `docker ps -a --format json`
 - `docker images --format json`
@@ -37,7 +37,7 @@ Docker resources are read through the Docker CLI using JSON output where availab
 
 ## Kubernetes inventory
 
-Kubernetes resources are read through `kubectl`:
+When `kubectl` is installed, Kubernetes resources are read through `kubectl`:
 
 - `kubectl get nodes -o json`
 - `kubectl get namespaces -o json`

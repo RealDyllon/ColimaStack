@@ -15,7 +15,7 @@ brew install colima
 
 ## Docker is unavailable
 
-Verify the Docker CLI is installed and points at the expected context:
+Docker CLI is optional. If you want Docker resource views, verify the Docker CLI is installed and points at the expected context:
 
 ```sh
 docker context ls
@@ -27,7 +27,7 @@ For a named Colima profile, use `colima-<profile>`.
 
 ## Kubernetes is unavailable
 
-Confirm Kubernetes is enabled for the selected profile:
+kubectl is optional. If you want Kubernetes resource views, confirm Kubernetes is enabled for the selected profile:
 
 ```sh
 colima kubernetes start

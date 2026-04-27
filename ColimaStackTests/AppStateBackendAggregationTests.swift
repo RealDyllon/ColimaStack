@@ -298,6 +298,26 @@ struct AppStateBackendAggregationTests {
         #expect(snapshot.docker == nil)
     }
 
+    @Test func backendSnapshotReturnsIssuesWhenOptionalResourceProvidersFail() async {
+        let service = LiveBackendSnapshotService(
+            dockerService: FailingDockerResourceProvider(),
+            kubernetesService: FailingKubernetesResourceProvider()
+        )
+        var profile = Self.profile(named: "default", state: .running)
+        profile.kubernetes = KubernetesConfig(enabled: true, version: "v1.30.4+k3s1", context: "colima")
+        var status = Self.detail(profile: "default", state: .running)
+        status.kubernetes = profile.kubernetes
+
+        let snapshot = await service.snapshot(profile: profile, status: status)
+
+        #expect(snapshot.profile.name == "default")
+        #expect(snapshot.status.state == .running)
+        #expect(snapshot.docker == nil)
+        #expect(snapshot.kubernetes == nil)
+        #expect(snapshot.issues.contains { $0.source == .docker && $0.title == "Unable to load Docker resources" })
+        #expect(snapshot.issues.contains { $0.source == .kubernetes && $0.title == "Unable to load Kubernetes resources" })
+    }
+
     fileprivate static func profile(named name: String, state: ProfileState) -> ColimaProfile {
         ColimaProfile(
             name: name,
@@ -438,6 +458,42 @@ private struct EmptyKubernetesResourceProvider: KubernetesResourceProviding {
             issues: [],
             commandRuns: []
         )
+    }
+}
+
+private struct FailingDockerResourceProvider: DockerResourceProviding {
+    func loadSnapshot(context: String?) async -> ResourceLoadState<DockerResourceSnapshot> {
+        .failed(
+            BackendIssue(
+                severity: .error,
+                source: .docker,
+                title: "Unable to load Docker resources",
+                message: "docker: command not found"
+            ),
+            lastValue: nil
+        )
+    }
+
+    func snapshot(context: String?) async throws -> DockerResourceSnapshot {
+        throw AppStateAggregationTestError(message: "docker: command not found")
+    }
+}
+
+private struct FailingKubernetesResourceProvider: KubernetesResourceProviding {
+    func loadSnapshot(context: String?) async -> ResourceLoadState<KubernetesResourceSnapshot> {
+        .failed(
+            BackendIssue(
+                severity: .error,
+                source: .kubernetes,
+                title: "Unable to load Kubernetes resources",
+                message: "kubectl: command not found"
+            ),
+            lastValue: nil
+        )
+    }
+
+    func snapshot(context: String?) async throws -> KubernetesResourceSnapshot {
+        throw AppStateAggregationTestError(message: "kubectl: command not found")
     }
 }
 

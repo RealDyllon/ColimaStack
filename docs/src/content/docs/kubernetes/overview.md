@@ -10,7 +10,7 @@ colima kubernetes start
 colima kubernetes stop
 ```
 
-The Kubernetes views use `kubectl` for cluster inventory.
+The Kubernetes views use `kubectl` for cluster inventory. Install `kubectl` only if you want to use these views.
 
 ## Cluster view
 

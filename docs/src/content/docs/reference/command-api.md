@@ -1,6 +1,6 @@
 ---
 title: Command API
-description: The Colima, Docker, and Kubernetes command contract used by ColimaStack.
+description: The Colima command contract and optional Docker and Kubernetes read APIs used by ColimaStack.
 ---
 
 This page summarizes the app-owned command contract. The source reference is the repository document at `docs/colima-command-api-reference.md`.
@@ -25,6 +25,8 @@ This page summarizes the app-owned command contract. The source reference is the
 
 ## Docker read APIs
 
+These commands are used only when the Docker CLI is installed and the selected profile uses the Docker runtime.
+
 | Screen | Command |
 | --- | --- |
 | Containers | `docker ps -a --format json` |
@@ -35,6 +37,8 @@ This page summarizes the app-owned command contract. The source reference is the
 | Disk usage | `docker system df --format json` |
 
 ## Kubernetes read APIs
+
+These commands are used only when `kubectl` is installed and Kubernetes is enabled for the selected profile.
 
 | Screen | Command |
 | --- | --- |

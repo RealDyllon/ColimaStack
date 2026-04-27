@@ -7,19 +7,19 @@ Use this guide to get from a clean macOS development machine to a visible Colima
 
 ## Prerequisites
 
-Install Colima and the Docker CLI for the default Docker runtime:
+Install Colima:
 
 ```sh
-brew install colima docker
+brew install colima
 ```
 
-Homebrew installs Lima as a Colima dependency. Install `kubectl` only if you plan to enable Kubernetes for a Colima profile:
+Install the Docker CLI only if you want Docker resource views such as containers, images, volumes, networks, stats, and disk usage:
 
 ```sh
-brew install kubectl
+brew install docker
 ```
 
-If ColimaStack diagnostics report that `limactl` is missing, install Lima explicitly with `brew install lima`.
+Homebrew installs Lima as a Colima dependency. Install `kubectl` only if you plan to enable Kubernetes for a Colima profile. If ColimaStack diagnostics report that `limactl` is missing, install Lima explicitly with `brew install lima`.
 
 ## Launch ColimaStack
 
@@ -33,7 +33,7 @@ Open the ColimaStack macOS app. On first launch, the app runs diagnostics for:
 - Docker context availability
 - Kubernetes context availability
 
-If a dependency is missing, open [Diagnostics](/features/diagnostics/) and follow the recovery suggestion.
+Only `colima` is required for core profile management. Missing optional tools limit the related views: Docker CLI for Docker inventory, `kubectl` for Kubernetes inventory, and `limactl` for deeper runtime diagnostics. If a dependency is missing, open [Diagnostics](/features/diagnostics/) and follow the recovery suggestion for the workflow you want to use.
 
 ## Create or select a profile
 

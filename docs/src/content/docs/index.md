@@ -20,7 +20,7 @@ hero:
 
 <section class="landing-intro">
 
-ColimaStack is built for developers who already trust [Colima](https://github.com/abiosoft/colima) as their local container runtime and want a faster way to see, inspect, and recover their environment. It keeps the Colima CLI as the foundation, then adds a focused product layer for daily profile, Docker, and Kubernetes work.
+ColimaStack is built for developers who already trust [Colima](https://github.com/abiosoft/colima) as their local container runtime and want a faster way to see, inspect, and recover their environment. It keeps the Colima CLI as the foundation, then adds optional Docker and Kubernetes visibility when those tools are installed.
 
 </section>
 
@@ -38,15 +38,15 @@ ColimaStack is built for developers who already trust [Colima](https://github.co
   </article>
   <article>
     <h3>Docker inventory</h3>
-    <p>Browse containers, images, volumes, networks, stats, and disk usage for the active Colima context.</p>
+    <p>Browse containers, images, volumes, networks, stats, and disk usage for the active Colima context when the Docker CLI is installed.</p>
   </article>
   <article>
     <h3>Kubernetes awareness</h3>
-    <p>Inspect nodes, namespaces, pods, deployments, services, and metrics when Kubernetes is enabled.</p>
+    <p>Inspect nodes, namespaces, pods, deployments, services, and metrics when Kubernetes is enabled and <code>kubectl</code> is installed.</p>
   </article>
   <article>
     <h3>Actionable diagnostics</h3>
-    <p>Spot missing or misconfigured <code>colima</code>, <code>docker</code>, <code>kubectl</code>, and <code>limactl</code> tools before they derail the session.</p>
+    <p>Spot missing or misconfigured core and optional tools before they derail the workflow you are using.</p>
   </article>
 </div>
 
