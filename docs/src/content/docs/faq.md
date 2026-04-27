@@ -11,6 +11,10 @@ No. ColimaStack is a native macOS app for managing and observing Colima. Colima 
 
 No. Install the Docker CLI separately. ColimaStack uses Docker commands to read containers, images, volumes, networks, stats, and disk usage from the selected Colima context.
 
+## Do I need Docker or kubectl installed?
+
+Not for core Colima profile management. Install the Docker CLI only for Docker runtime inventory, and install `kubectl` only for Kubernetes inventory and context checks.
+
 ## Can I use multiple Colima profiles?
 
 Yes. ColimaStack lists profiles and scopes operations through `COLIMA_PROFILE`. Docker context names are derived from the selected profile.

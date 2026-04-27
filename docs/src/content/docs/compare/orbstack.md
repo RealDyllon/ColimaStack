@@ -5,7 +5,7 @@ description: Compare ColimaStack's Colima-focused workflow with OrbStack's bundl
 
 OrbStack is a bundled macOS product for Docker containers, Kubernetes, and Linux machines. Its docs emphasize out-of-the-box installation, automatic container domains, HTTPS, GUI management, command-line usage, Docker Desktop and Colima migration, Kubernetes integration, and Linux machine workflows.
 
-ColimaStack takes a different route: it builds a native GUI and diagnostics layer around Colima, Docker CLI, kubectl, and Lima.
+ColimaStack takes a different route: it builds a native GUI and diagnostics layer around Colima, with optional Docker CLI, kubectl, and Lima integrations.
 
 ## Choose ColimaStack when
 
@@ -13,7 +13,7 @@ ColimaStack takes a different route: it builds a native GUI and diagnostics laye
 - you already use Colima profiles
 - you want GUI visibility without replacing your Colima setup
 - you need command transparency and CLI compatibility
-- you want Docker and Kubernetes inventory for Colima contexts
+- you want optional Docker and Kubernetes inventory for Colima contexts
 
 ## Choose OrbStack when
 

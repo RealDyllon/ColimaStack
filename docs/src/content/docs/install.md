@@ -3,36 +3,45 @@ title: Install
 description: Set up ColimaStack and the command-line tools it controls.
 ---
 
-ColimaStack is a macOS app that controls local tools installed on your machine. It does not replace Colima, Docker, or kubectl. It makes those tools visible and easier to operate.
+ColimaStack is a macOS app that controls local tools installed on your machine. It does not replace Colima, Docker, or kubectl. Colima is the core dependency; Docker CLI and kubectl are optional integrations for the workflows that use them.
 
-## Requirements
+## Core requirements
 
 - macOS
 - Colima
-- Docker CLI
+
+## Optional integrations
+
+- Docker CLI for Docker runtime inventory
 - kubectl for Kubernetes workflows
 - Lima or `limactl` for deeper runtime diagnostics, normally installed by Homebrew with Colima
 
 ## Install dependencies
 
-Install the standard Docker workflow toolchain with Homebrew:
+Install the core Colima dependency with Homebrew:
 
 ```sh
-brew install colima docker
+brew install colima
 ```
 
-Install `kubectl` only if you plan to enable Kubernetes for a Colima profile:
+Install optional tools only for the workflows you plan to use:
 
 ```sh
+brew install docker
 brew install kubectl
 ```
 
-If ColimaStack diagnostics report that `limactl` is missing, install Lima explicitly with `brew install lima`.
+The Docker CLI enables ColimaStack's Docker resource views for containers, images, volumes, networks, stats, and disk usage. `kubectl` enables Kubernetes inventory views. If ColimaStack diagnostics report that `limactl` is missing, install Lima explicitly with `brew install lima`.
 
-Start a default Colima profile from Terminal if you want to verify the CLI path before opening the app:
+Start a default Colima profile from Terminal if you want to verify the core CLI path before opening the app:
 
 ```sh
 colima start
+```
+
+If you installed the Docker CLI, verify the Docker context separately:
+
+```sh
 docker context use colima
 docker ps
 ```
