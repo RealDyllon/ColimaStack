@@ -66,7 +66,7 @@ Status values:
 - Partial: represented by a generic or adjacent state, but not yet proven against the exact mockup.
 - Deferred: not currently implemented and must be explicitly descoped or built before claiming full mockup coverage.
 
-Last reconciled: April 26, 2026 against `ColimaStack/Views`, `PreviewSupport`, and the passing Xcode suite. The individual numbered PNG files are not present in `design/mockups`; the filenames below are treated as inventory entries from the contact sheets.
+Last reconciled: May 10, 2026 against `ColimaStack/Views`, `PreviewSupport`, and the passing focused Xcode suite. The individual numbered PNG files are not present in `design/mockups`; the filenames below are treated as inventory entries from the contact sheets.
 
 | # | State | Status | Implementation note |
 |---|---|---|---|
@@ -92,10 +92,10 @@ Last reconciled: April 26, 2026 against `ColimaStack/Views`, `PreviewSupport`, a
 | 20 | Activity logs | Implemented | Activity and overview show captured profile logs. |
 | 21 | Command history | Implemented | `CommandLogEntry` records command, status, output, and errors. |
 | 22 | Terminal output retry | Partial | Raw terminal output is shown; retry affordance is limited to rerunning toolbar actions. |
-| 23 | Container actions menu | Partial | Menu bar exposes open/copy actions for containers; main container row actions are not implemented. |
-| 24 | Container delete confirmation | Deferred | Container deletion is not a first-class GUI action. |
-| 25 | Container inspect | Deferred | No dedicated inspect panel for container JSON/details. |
-| 26 | Container logs/files | Deferred | Profile logs exist; per-container logs/files are not implemented. |
+| 23 | Container actions menu | Implemented | Container rows expose state-aware lifecycle buttons, a More menu, copy actions, logs, inspect, terminal command, open-port, and delete entry points. |
+| 24 | Container delete confirmation | Implemented | Delete requires typing the selected container name or ID exactly before `docker rm` can run. |
+| 25 | Container inspect | Implemented | The selected-container inspector includes a formatted `docker inspect` JSON tab with search and copy controls. |
+| 26 | Container logs/files | Implemented | The selected-container inspector includes command-backed logs, terminal command, stats, ports, and files tabs with mount and volume references. |
 | 27 | Images screen | Implemented | `ImagesScreen` lists image records and empty/search states. |
 | 28 | Volumes screen | Implemented | `VolumesScreen` lists Colima mounts and Docker volumes. |
 | 29 | Networks screen | Implemented | `NetworksScreen` lists profile and Docker network data. |
@@ -125,5 +125,5 @@ Last reconciled: April 26, 2026 against `ColimaStack/Views`, `PreviewSupport`, a
 | 53 | Long namespaces | Partial | Kubernetes rows truncate; no edge fixture or screenshot evidence. |
 | 54 | High metric values | Partial | Metrics format bytes/percent values; no edge fixture or screenshot evidence. |
 | 55 | Disconnected cluster | Partial | Backend issues can surface kubectl failures; no dedicated disconnected-cluster mock state. |
-| 56 | Container start confirmation | Deferred | Container lifecycle actions are not implemented. |
-| 57 | Container restart confirmation | Deferred | Container lifecycle actions are not implemented. |
+| 56 | Container start confirmation | Partial | Start is a first-class row action for stopped containers; the exact confirmation mock is not required for single-container start. |
+| 57 | Container restart confirmation | Partial | Restart is a first-class row action for running containers; group restart confirmation remains outside the current mockup coverage. |

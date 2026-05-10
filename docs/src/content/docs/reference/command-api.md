@@ -85,9 +85,11 @@ The UI blocks profile rename on edit and requires profile-name confirmation befo
 
 For the default profile, the expected Docker context is `colima`. For named profiles, it is `colima-<profile>`.
 
-## Docker inventory commands
+## Docker commands
 
-Docker inventory is read-only. If a selected context is known, every command is prefixed with `docker --context <context>`.
+If a selected context is known, every Docker command is prefixed with `docker --context <context>`.
+
+### Inventory
 
 | View or metric | Command shape |
 | --- | --- |
@@ -108,6 +110,31 @@ Command details:
 - Mutating: no.
 - Context behavior: `--context <context>` is added when the selected profile exposes one.
 - Socket behavior: socket paths are displayed and indexed, but Docker inventory commands use context flags rather than passing socket paths.
+
+### Container controls
+
+Container actions are routed through app command history and refresh the selected profile after a successful mutating action.
+
+| Purpose | Command shape | Mutates state |
+| --- | --- | --- |
+| Start container | `docker --context <context> start <container>` | Yes |
+| Stop container | `docker --context <context> stop <container>` | Yes |
+| Restart container | `docker --context <context> restart <container>` | Yes |
+| Pause container | `docker --context <context> pause <container>` | Yes |
+| Resume container | `docker --context <context> unpause <container>` | Yes |
+| Kill container | `docker --context <context> kill <container>` | Yes |
+| Delete container | `docker --context <context> rm <container>` | Yes |
+| Load logs | `docker --context <context> logs [--timestamps] --tail <count> <container>` | No |
+| Load inspect JSON | `docker --context <context> inspect <container>` | No |
+| Terminal command | `docker --context <context> exec -it <container> /bin/sh` | Depends on shell command |
+
+Command details:
+
+- External binary: `docker`.
+- Timeout: 30 seconds for lifecycle commands, logs, and inspect.
+- Context behavior: `--context <context>` is added when the selected profile exposes one.
+- Delete behavior: the UI requires typing the selected container name or ID exactly before `rm` can run.
+- Output behavior: logs and inspect output are redacted before being stored in command history or shown in detail panels.
 
 Feature pages: [Containers](/docker/containers/), [Images](/docker/images/), [Volumes](/docker/volumes/), [Networks](/docker/networks/), [Monitor](/runtime/monitor/).
 

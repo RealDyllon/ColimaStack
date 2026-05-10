@@ -4,6 +4,74 @@ import Testing
 
 @MainActor
 struct DockerResourceServiceTests {
+    @Test func containerCommandsUseSelectedDockerContext() async throws {
+        let runner = FakeCommandRunProvider(outputs: [
+            "Start container api": .success("api\n"),
+            "Fetch container logs api": .success("ready\n"),
+            "Inspect container api": .success(#"[{"Id":"api","Config":{"Image":"nginx"}}]"#)
+        ])
+        let service = LiveDockerContainerCommandService(commandRunner: runner)
+
+        _ = try await service.start(containerID: "api", context: "colima-dev")
+        let logs = try await service.logs(containerID: "api", context: "colima-dev", timestamps: true, tail: 200)
+        let inspect = try await service.inspect(containerID: "api", context: "colima-dev")
+
+        #expect(logs == "ready\n")
+        #expect(inspect.contains(#""Image":"nginx""#))
+        #expect(runner.requests.map(\.arguments) == [
+            ["--context", "colima-dev", "start", "api"],
+            ["--context", "colima-dev", "logs", "--timestamps", "--tail", "200", "api"],
+            ["--context", "colima-dev", "inspect", "api"]
+        ])
+        #expect(runner.requests.allSatisfy { $0.toolName == "docker" })
+    }
+
+    @Test func containerActionAvailabilityFollowsContainerState() {
+        let running = Self.container(id: "run", state: "running")
+        let paused = Self.container(id: "pause", state: "paused")
+        let exited = Self.container(id: "exit", state: "exited")
+        let dead = Self.container(id: "dead", state: "dead")
+
+        #expect(running.availableActions.contains(.stop))
+        #expect(running.availableActions.contains(.restart))
+        #expect(running.availableActions.contains(.pause))
+        #expect(running.availableActions.contains(.terminal))
+        #expect(!running.availableActions.contains(.start))
+
+        #expect(paused.availableActions.contains(.resume))
+        #expect(paused.availableActions.contains(.stop))
+        #expect(!paused.availableActions.contains(.pause))
+
+        #expect(exited.availableActions.contains(.start))
+        #expect(exited.availableActions.contains(.delete))
+        #expect(!exited.availableActions.contains(.terminal))
+
+        #expect(dead.availableActions.contains(.kill))
+        #expect(dead.availableActions.contains(.delete))
+        #expect(dead.health == .error)
+    }
+
+    @Test func composeGroupsAreDerivedFromDockerLabels() {
+        let containers = [
+            Self.container(id: "api", name: "api-1", state: "running", labels: [
+                "com.docker.compose.project": "shop",
+                "com.docker.compose.service": "api"
+            ]),
+            Self.container(id: "web", name: "web-1", state: "exited", labels: [
+                "com.docker.compose.project": "shop",
+                "com.docker.compose.service": "web"
+            ]),
+            Self.container(id: "redis", name: "redis", state: "running", labels: [:])
+        ]
+
+        let groups = DockerComposeContainerGroup.groups(from: containers)
+
+        #expect(groups.map(\.projectName) == ["shop"])
+        #expect(groups.first?.containers.map(\.id) == ["api", "web"])
+        #expect(groups.first?.runningCount == 1)
+        #expect(groups.first?.services == ["api", "web"])
+    }
+
     @Test func snapshotBuildsExplicitContextArgumentsForEveryDockerCommand() async throws {
         let runner = FakeCommandRunProvider(outputs: [
             "Read active Docker context": .success("colima-dev\n"),
@@ -138,6 +206,27 @@ struct DockerResourceServiceTests {
                 && issue.source == .metrics
                 && issue.message.contains("missing required fields")
         })
+    }
+
+    private static func container(
+        id: String,
+        name: String? = nil,
+        state: String,
+        labels: [String: String] = [:]
+    ) -> DockerContainerResource {
+        DockerContainerResource(
+            id: id,
+            name: name ?? id,
+            image: "example/\(id):latest",
+            command: "run",
+            createdAt: "now",
+            runningFor: "1 minute",
+            ports: "",
+            state: state,
+            status: state,
+            size: "1MB",
+            labels: labels
+        )
     }
 }
 

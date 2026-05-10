@@ -380,6 +380,92 @@ nonisolated struct DockerContainerResource: Identifiable, Hashable, Codable, Sen
         if normalized == "exited" || normalized == "restarting" || normalized == "paused" { return .warning }
         return .unknown
     }
+
+    var displayName: String {
+        name.isEmpty ? id : name
+    }
+
+    var normalizedState: String {
+        state.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    var composeProject: String? {
+        labels["com.docker.compose.project"]?.nonEmpty
+    }
+
+    var composeService: String? {
+        labels["com.docker.compose.service"]?.nonEmpty
+    }
+
+    var availableActions: Set<DockerContainerAction> {
+        var actions: Set<DockerContainerAction> = [.logs, .inspect, .copyID, .copyImage]
+        if !ports.isEmpty { actions.insert(.copyPorts) }
+        if !portBindings.isEmpty { actions.insert(.openPort) }
+
+        switch normalizedState {
+        case "running":
+            actions.formUnion([.stop, .restart, .pause, .terminal])
+        case "paused":
+            actions.formUnion([.resume, .stop, .restart])
+        case "dead":
+            actions.formUnion([.kill, .delete])
+        case "restarting":
+            actions.formUnion([.stop, .kill, .restart])
+        case "exited", "created", "stopped":
+            actions.formUnion([.start, .delete])
+        default:
+            actions.formUnion([.start, .restart, .delete])
+        }
+        return actions
+    }
+}
+
+nonisolated enum DockerContainerAction: String, CaseIterable, Hashable, Codable, Sendable {
+    case start
+    case stop
+    case restart
+    case pause
+    case resume
+    case kill
+    case delete
+    case logs
+    case inspect
+    case terminal
+    case openPort
+    case copyID
+    case copyImage
+    case copyPorts
+}
+
+nonisolated struct DockerComposeContainerGroup: Identifiable, Hashable, Codable, Sendable {
+    var projectName: String
+    var containers: [DockerContainerResource]
+
+    var id: String { projectName }
+
+    var runningCount: Int {
+        containers.filter { $0.normalizedState == "running" }.count
+    }
+
+    var services: [String] {
+        Array(Set(containers.compactMap(\.composeService))).sorted()
+    }
+
+    static func groups(from containers: [DockerContainerResource]) -> [DockerComposeContainerGroup] {
+        Dictionary(grouping: containers.compactMap { container -> (String, DockerContainerResource)? in
+            guard let project = container.composeProject else { return nil }
+            return (project, container)
+        }, by: { $0.0 })
+        .map { project, values in
+            DockerComposeContainerGroup(
+                projectName: project,
+                containers: values.map(\.1).sorted {
+                    $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+                }
+            )
+        }
+        .sorted { $0.projectName.localizedCaseInsensitiveCompare($1.projectName) == .orderedAscending }
+    }
 }
 
 nonisolated struct DockerImageResource: Identifiable, Hashable, Codable, Sendable {
