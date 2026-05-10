@@ -483,6 +483,7 @@ final class AppState: ObservableObject {
 
     @discardableResult
     private func runDockerContainerCommand(_ label: String, operation: () async throws -> ManagedCommandRun) async -> Bool {
+        guard activeOperation == nil, !isRefreshing else { return false }
         activeOperation = label
         var entry = CommandLogEntry(date: Date(), command: label, status: .running, output: "")
         commandLog.insert(entry, at: 0)

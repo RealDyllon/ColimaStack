@@ -35,6 +35,7 @@ struct DockerResourceServiceTests {
         #expect(running.availableActions.contains(.stop))
         #expect(running.availableActions.contains(.restart))
         #expect(running.availableActions.contains(.pause))
+        #expect(running.availableActions.contains(.kill))
         #expect(running.availableActions.contains(.terminal))
         #expect(!running.availableActions.contains(.start))
 
@@ -46,7 +47,7 @@ struct DockerResourceServiceTests {
         #expect(exited.availableActions.contains(.delete))
         #expect(!exited.availableActions.contains(.terminal))
 
-        #expect(dead.availableActions.contains(.kill))
+        #expect(!dead.availableActions.contains(.kill))
         #expect(dead.availableActions.contains(.delete))
         #expect(dead.health == .error)
     }

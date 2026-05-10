@@ -308,6 +308,10 @@ struct ContainersScreen: View {
         }.sorted { ($0.name.isEmpty ? $0.id : $0.name).localizedCaseInsensitiveCompare($1.name.isEmpty ? $1.id : $1.name) == .orderedAscending }
     }
 
+    private var containerActionsAreBusy: Bool {
+        appState.activeOperation != nil || appState.isRefreshing
+    }
+
     var body: some View {
         DetailScreenLayout(
             title: "Containers",
@@ -369,6 +373,9 @@ struct ContainersScreen: View {
             guard let selectedContainerID, !ids.contains(selectedContainerID) else { return }
             self.selectedContainerID = ids.first
         }
+        .onChange(of: selectedContainerID) { _, _ in
+            resetInspectorBuffers()
+        }
     }
 
     private var selectedContainer: DockerContainerResource? {
@@ -381,10 +388,10 @@ struct ContainersScreen: View {
 
     @ViewBuilder
     private var containerWorkspace: some View {
-        if containers.isEmpty {
+        if allContainers.isEmpty {
             SurfaceStateView(
-                title: searchText.isEmpty ? "No containers" : "No matching containers",
-                message: searchText.isEmpty ? "The selected Colima profile has no Docker containers." : "Adjust the search or clear the filter.",
+                title: "No containers",
+                message: "The selected Colima profile has no Docker containers.",
                 symbol: "shippingbox",
                 tone: .neutral
             )
@@ -394,9 +401,9 @@ struct ContainersScreen: View {
                     ContainerToolbar(
                         filter: $filter,
                         stoppedCount: allContainers.filter { ContainerStateFilter.stopped.includes($0) }.count,
-                        isBusy: appState.activeOperation != nil,
+                        isBusy: containerActionsAreBusy,
                         onRefresh: { Task { await appState.refreshAll() } },
-                        onPruneStopped: { copyContainerText("docker container prune") }
+                        onPruneStopped: { copyContainerText(pruneStoppedCommand) }
                     )
 
                     let groups = DockerComposeContainerGroup.groups(from: containers)
@@ -404,14 +411,23 @@ struct ContainersScreen: View {
                         ComposeGroupSummary(groups: groups)
                     }
 
-                    ContainerControlTable(
-                        containers: containers,
-                        selectedID: selectedContainer?.id,
-                        stats: appState.backendSnapshot?.docker?.stats ?? [],
-                        isBusy: appState.activeOperation != nil,
-                        onSelect: { selectedContainerID = $0.id },
-                        onAction: handleAction
-                    )
+                    if containers.isEmpty {
+                        SurfaceStateView(
+                            title: "No matching containers",
+                            message: "Adjust the search or state filter.",
+                            symbol: "shippingbox",
+                            tone: .neutral
+                        )
+                    } else {
+                        ContainerControlTable(
+                            containers: containers,
+                            selectedID: selectedContainer?.id,
+                            stats: appState.backendSnapshot?.docker?.stats ?? [],
+                            isBusy: containerActionsAreBusy,
+                            onSelect: selectContainer,
+                            onAction: handleAction
+                        )
+                    }
                 }
                 .frame(minWidth: 620)
 
@@ -429,7 +445,7 @@ struct ContainersScreen: View {
                     tail: $logsTail,
                     terminalCommand: selectedContainer.map { appState.terminalCommand(for: $0) } ?? "",
                     volumes: appState.backendSnapshot?.docker?.volumes ?? [],
-                    isBusy: appState.activeOperation != nil,
+                    isBusy: containerActionsAreBusy,
                     onAction: handleAction,
                     onLoadLogs: loadLogs,
                     onLoadInspect: loadInspect
@@ -437,6 +453,15 @@ struct ContainersScreen: View {
                 .frame(minWidth: 360, maxWidth: 440)
             }
         }
+    }
+
+    private var pruneStoppedCommand: String {
+        var arguments = ["docker"]
+        if let context = (selectedDetail?.dockerContext ?? selectedProfile?.dockerContext)?.nonEmpty {
+            arguments += ["--context", context]
+        }
+        arguments += ["container", "prune"]
+        return arguments.map(shellEscaped).joined(separator: " ")
     }
 
     private func stats(for container: DockerContainerResource?) -> DockerStatsResource? {
@@ -455,6 +480,8 @@ struct ContainersScreen: View {
     }
 
     private func handleAction(_ action: DockerContainerAction, _ container: DockerContainerResource) {
+        guard !action.isMutating || !containerActionsAreBusy else { return }
+
         switch action {
         case .start:
             Task { await appState.startContainer(container) }
@@ -471,15 +498,15 @@ struct ContainersScreen: View {
         case .delete:
             deleteCandidate = container
         case .logs:
-            selectedContainerID = container.id
+            selectContainer(container)
             selectedTab = .logs
             loadLogs()
         case .inspect:
-            selectedContainerID = container.id
+            selectContainer(container)
             selectedTab = .inspect
             loadInspect()
         case .terminal:
-            selectedContainerID = container.id
+            selectContainer(container)
             selectedTab = .terminal
             copyContainerText(appState.terminalCommand(for: container))
         case .openPort:
@@ -495,25 +522,48 @@ struct ContainersScreen: View {
         }
     }
 
+    private func selectContainer(_ container: DockerContainerResource) {
+        selectedContainerID = container.id
+    }
+
+    private func resetInspectorBuffers() {
+        logsText = ""
+        inspectText = ""
+        logsError = nil
+        inspectError = nil
+        logsSearch = ""
+        inspectSearch = ""
+    }
+
     private func loadLogs() {
-        guard let selectedContainer else { return }
+        guard let container = selectedContainer else { return }
+        let requestedContainer = container
+        let requestedID = requestedContainer.id
         logsError = nil
         Task {
             do {
-                logsText = try await appState.containerLogs(selectedContainer, timestamps: logsIncludeTimestamps, tail: logsTail)
+                let output = try await appState.containerLogs(requestedContainer, timestamps: logsIncludeTimestamps, tail: logsTail)
+                guard selectedContainer?.id == requestedID else { return }
+                logsText = output
             } catch {
+                guard selectedContainer?.id == requestedID else { return }
                 logsError = error.localizedDescription
             }
         }
     }
 
     private func loadInspect() {
-        guard let selectedContainer else { return }
+        guard let container = selectedContainer else { return }
+        let requestedContainer = container
+        let requestedID = requestedContainer.id
         inspectError = nil
         Task {
             do {
-                inspectText = prettyJSON(try await appState.inspectContainer(selectedContainer))
+                let output = prettyJSON(try await appState.inspectContainer(requestedContainer))
+                guard selectedContainer?.id == requestedID else { return }
+                inspectText = output
             } catch {
+                guard selectedContainer?.id == requestedID else { return }
                 inspectError = error.localizedDescription
             }
         }
@@ -733,7 +783,7 @@ private struct ContainerControlRow: View {
             Divider().padding(.leading, 12)
         }
         .contextMenu {
-            ContainerActionsMenu(container: container, onAction: onAction)
+            ContainerActionsMenu(container: container, isBusy: isBusy, onAction: onAction)
         }
         .accessibilityIdentifier("container.row.\(container.id)")
     }
@@ -776,7 +826,7 @@ private struct ContainerRowActions: View {
                 iconButton("Open port", "safari", .openPort)
             }
             Menu {
-                ContainerActionsMenu(container: container, onAction: onAction)
+                ContainerActionsMenu(container: container, isBusy: isBusy, onAction: onAction)
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
@@ -801,6 +851,7 @@ private struct ContainerRowActions: View {
 
 private struct ContainerActionsMenu: View {
     let container: DockerContainerResource
+    let isBusy: Bool
     let onAction: (DockerContainerAction) -> Void
 
     var body: some View {
@@ -808,6 +859,7 @@ private struct ContainerActionsMenu: View {
             Button(action.title, systemImage: action.symbol) {
                 onAction(action)
             }
+            .disabled(isBusy)
         }
         Divider()
         Button("Logs", systemImage: "doc.text.magnifyingglass") { onAction(.logs) }
@@ -827,6 +879,7 @@ private struct ContainerActionsMenu: View {
         if container.availableActions.contains(.delete) {
             Divider()
             Button("Delete...", systemImage: "trash", role: .destructive) { onAction(.delete) }
+                .disabled(isBusy)
         }
     }
 
@@ -874,6 +927,15 @@ private extension DockerContainerAction {
 
     var accessibilityIdentifier: String {
         "container.action.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))"
+    }
+
+    var isMutating: Bool {
+        switch self {
+        case .start, .stop, .restart, .pause, .resume, .kill, .delete:
+            true
+        case .logs, .inspect, .terminal, .openPort, .copyID, .copyImage, .copyPorts:
+            false
+        }
     }
 }
 
@@ -1106,6 +1168,14 @@ private struct ContainerDeleteConfirmationSheet: View {
 private func copyContainerText(_ value: String) {
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(value, forType: .string)
+}
+
+private func shellEscaped(_ value: String) -> String {
+    let safeCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-")
+    if value.unicodeScalars.allSatisfy({ safeCharacters.contains($0) }) {
+        return value
+    }
+    return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
 }
 
 private func prettyJSON(_ value: String) -> String {

@@ -404,11 +404,11 @@ nonisolated struct DockerContainerResource: Identifiable, Hashable, Codable, Sen
 
         switch normalizedState {
         case "running":
-            actions.formUnion([.stop, .restart, .pause, .terminal])
+            actions.formUnion([.stop, .restart, .pause, .kill, .terminal])
         case "paused":
             actions.formUnion([.resume, .stop, .restart])
         case "dead":
-            actions.formUnion([.kill, .delete])
+            actions.formUnion([.delete])
         case "restarting":
             actions.formUnion([.stop, .kill, .restart])
         case "exited", "created", "stopped":
