@@ -444,7 +444,6 @@ struct ContainersScreen: View {
                     includeTimestamps: $logsIncludeTimestamps,
                     tail: $logsTail,
                     terminalCommand: selectedContainer.map { appState.terminalCommand(for: $0) } ?? "",
-                    volumes: appState.backendSnapshot?.docker?.volumes ?? [],
                     isBusy: containerActionsAreBusy,
                     onAction: handleAction,
                     onLoadLogs: loadLogs,
@@ -952,7 +951,6 @@ private struct ContainerInspector: View {
     @Binding var includeTimestamps: Bool
     @Binding var tail: Int
     let terminalCommand: String
-    let volumes: [DockerVolumeResource]
     let isBusy: Bool
     let onAction: (DockerContainerAction, DockerContainerResource) -> Void
     let onLoadLogs: () -> Void
@@ -1075,32 +1073,39 @@ private struct ContainerInspector: View {
                 .disabled(terminalCommand.isEmpty)
             }
         case .files:
+            let mounts = containerMounts(from: inspectText)
             VStack(alignment: .leading, spacing: 10) {
                 Text("Volumes and bind-mount clues")
                     .font(.headline)
-                if volumes.isEmpty {
-                    Text("No Docker volumes reported for this context. Use Inspect for container-specific mounts.")
+                if inspectText.isEmpty {
+                    Text("Load inspect JSON to show mounts for this container.")
+                        .foregroundStyle(.secondary)
+                    Button("Load Inspect") { onLoadInspect() }
+                } else if mounts.isEmpty {
+                    Text("No mounts were reported for this container.")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(volumes.prefix(8)) { volume in
+                    ForEach(mounts.prefix(8)) { mount in
                         HStack {
                             VStack(alignment: .leading) {
-                                Text(volume.name)
+                                Text(mount.title)
                                     .fontWeight(.medium)
-                                Text(volume.mountpoint)
+                                Text(mount.subtitle)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                                     .truncationMode(.middle)
                             }
                             Spacer()
-                            Button {
-                                NSWorkspace.shared.open(URL(fileURLWithPath: volume.mountpoint))
-                            } label: {
-                                Image(systemName: "folder")
+                            if let url = mount.fileURL {
+                                Button {
+                                    NSWorkspace.shared.open(url)
+                                } label: {
+                                    Image(systemName: "folder")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Open mount source in Finder")
                             }
-                            .buttonStyle(.borderless)
-                            .help("Open volume mountpoint in Finder")
                         }
                     }
                 }
@@ -1133,6 +1138,57 @@ private struct ContainerInspector: View {
             .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { $0.localizedCaseInsensitiveContains(query) }
             .joined(separator: "\n")
+    }
+}
+
+private struct ContainerMount: Identifiable, Hashable {
+    var type: String
+    var name: String
+    var source: String
+    var destination: String
+
+    var id: String { [type, name, source, destination].joined(separator: "|") }
+
+    var title: String {
+        name.nonEmpty ?? source.nonEmpty ?? destination.nonEmpty ?? "Mount"
+    }
+
+    var subtitle: String {
+        let target = destination.nonEmpty ?? "unknown target"
+        if let source = source.nonEmpty {
+            return "\(type.nonEmpty ?? "mount"): \(source) -> \(target)"
+        }
+        return "\(type.nonEmpty ?? "mount"): \(target)"
+    }
+
+    var fileURL: URL? {
+        guard let source = source.nonEmpty, source.hasPrefix("/") else { return nil }
+        return URL(fileURLWithPath: source)
+    }
+}
+
+private func containerMounts(from inspectText: String) -> [ContainerMount] {
+    guard let data = inspectText.data(using: .utf8),
+          let root = try? JSONSerialization.jsonObject(with: data) else {
+        return []
+    }
+
+    let object: [String: Any]?
+    if let array = root as? [[String: Any]] {
+        object = array.first
+    } else {
+        object = root as? [String: Any]
+    }
+
+    guard let mounts = object?["Mounts"] as? [[String: Any]] else { return [] }
+    return mounts.compactMap { mount in
+        let value = ContainerMount(
+            type: mount.string("Type"),
+            name: mount.string("Name"),
+            source: mount.string("Source"),
+            destination: mount.string("Destination", "Target")
+        )
+        return value.source.isEmpty && value.destination.isEmpty && value.name.isEmpty ? nil : value
     }
 }
 

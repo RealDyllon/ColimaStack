@@ -374,7 +374,10 @@ nonisolated struct DockerContainerResource: Identifiable, Hashable, Codable, Sen
     }
 
     var health: BackendResourceHealth {
-        let normalized = state.lowercased()
+        let normalized = normalizedState
+        let status = normalizedStatus
+        if status.contains("unhealthy") { return .error }
+        if status.contains("health: starting") { return .warning }
         if normalized == "running" { return .healthy }
         if normalized == "dead" { return .error }
         if normalized == "exited" || normalized == "restarting" || normalized == "paused" { return .warning }
@@ -387,6 +390,10 @@ nonisolated struct DockerContainerResource: Identifiable, Hashable, Codable, Sen
 
     var normalizedState: String {
         state.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    var normalizedStatus: String {
+        status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
     var composeProject: String? {
@@ -406,7 +413,7 @@ nonisolated struct DockerContainerResource: Identifiable, Hashable, Codable, Sen
         case "running":
             actions.formUnion([.stop, .restart, .pause, .kill, .terminal])
         case "paused":
-            actions.formUnion([.resume, .stop, .restart])
+            actions.formUnion([.resume, .restart])
         case "dead":
             actions.formUnion([.delete])
         case "restarting":

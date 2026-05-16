@@ -28,6 +28,7 @@ struct DockerResourceServiceTests {
 
     @Test func containerActionAvailabilityFollowsContainerState() {
         let running = Self.container(id: "run", state: "running")
+        let unhealthy = Self.container(id: "unhealthy", state: "running", status: "Up 3 minutes (unhealthy)")
         let paused = Self.container(id: "pause", state: "paused")
         let exited = Self.container(id: "exit", state: "exited")
         let dead = Self.container(id: "dead", state: "dead")
@@ -38,9 +39,10 @@ struct DockerResourceServiceTests {
         #expect(running.availableActions.contains(.kill))
         #expect(running.availableActions.contains(.terminal))
         #expect(!running.availableActions.contains(.start))
+        #expect(unhealthy.health == .error)
 
         #expect(paused.availableActions.contains(.resume))
-        #expect(paused.availableActions.contains(.stop))
+        #expect(!paused.availableActions.contains(.stop))
         #expect(!paused.availableActions.contains(.pause))
 
         #expect(exited.availableActions.contains(.start))
@@ -213,6 +215,7 @@ struct DockerResourceServiceTests {
         id: String,
         name: String? = nil,
         state: String,
+        status: String? = nil,
         labels: [String: String] = [:]
     ) -> DockerContainerResource {
         DockerContainerResource(
@@ -224,7 +227,7 @@ struct DockerResourceServiceTests {
             runningFor: "1 minute",
             ports: "",
             state: state,
-            status: state,
+            status: status ?? state,
             size: "1MB",
             labels: labels
         )

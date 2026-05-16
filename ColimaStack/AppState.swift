@@ -367,11 +367,13 @@ final class AppState: ObservableObject {
     }
 
     func containerLogs(_ container: DockerContainerResource, timestamps: Bool, tail: Int) async throws -> String {
-        try await dockerContainerController.logs(containerID: container.id, context: selectedDockerContext, timestamps: timestamps, tail: tail)
+        let output = try await dockerContainerController.logs(containerID: container.id, context: selectedDockerContext, timestamps: timestamps, tail: tail)
+        return cappedLog(output)
     }
 
     func inspectContainer(_ container: DockerContainerResource) async throws -> String {
-        try await dockerContainerController.inspect(containerID: container.id, context: selectedDockerContext)
+        let output = try await dockerContainerController.inspect(containerID: container.id, context: selectedDockerContext)
+        return cappedLog(output)
     }
 
     func terminalCommand(for container: DockerContainerResource, shell: String = "/bin/sh") -> String {

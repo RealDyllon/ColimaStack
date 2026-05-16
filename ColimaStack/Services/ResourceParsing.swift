@@ -259,7 +259,7 @@ nonisolated enum EnvironmentRedactor {
             with: "$1<redacted>"
         )
         value = replacing(
-            #"(?i)\b([A-Z0-9_.-]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|AUTHORIZATION|CREDENTIAL)[A-Z0-9_.-]*)\s*=\s*("[^"]*"|'[^']*'|[^\s,;]+)"#,
+            #"(?i)\b([A-Z0-9_.-]*(?:PASSWORD|PASSWD|SECRET|TOKEN|API[_-]?KEY|ACCESS[_-]?KEY|PRIVATE[_-]?KEY|AUTHORIZATION|CREDENTIAL)[A-Z0-9_.-]*)\s*=\s*("[^"]*"|'[^']*'|[^"'\s,;\]\}]+)"#,
             in: value,
             with: "$1=<redacted>"
         )

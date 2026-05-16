@@ -261,6 +261,30 @@ struct AppStateBackendAggregationTests {
         #expect(state.backendSnapshot?.docker?.containers.map(\.id) == ["api"])
     }
 
+    @Test func containerLogsAndInspectAreRedactedAndCapped() async throws {
+        let docker = RecordingDockerContainerCommandController()
+        docker.logsOutput = String(repeating: "x", count: 200_010) + " API_TOKEN=abc123"
+        docker.inspectOutput = #"{"Id":"api","Config":{"Env":["PASSWORD=hunter2"],"Labels":{"api_key":"secret"}}}"#
+        let state = AppState(
+            colima: RecordingFakeColima(),
+            profiles: [Self.profile(named: "default", state: .running)],
+            dockerContainerController: docker
+        )
+        state.selectedProfileID = "default"
+        state.selectedProfileDetail = Self.detail(profile: "default", state: .running)
+
+        let logs = try await state.containerLogs(Self.container(id: "api", name: "api", state: "running"), timestamps: false, tail: 2_000)
+        let inspect = try await state.inspectContainer(Self.container(id: "api", name: "api", state: "running"))
+
+        #expect(logs.hasPrefix("[Output truncated to the last 200000 characters]"))
+        #expect(logs.contains("API_TOKEN=<redacted>"))
+        #expect(!logs.contains("abc123"))
+        #expect(inspect.contains(#""api_key":"<redacted>""#))
+        #expect(inspect.contains("PASSWORD=<redacted>"))
+        #expect(!inspect.contains("hunter2"))
+        #expect(!inspect.contains("secret"))
+    }
+
     @Test func commandLogRedactsBeforeTruncatingLongOutput() async {
         let colima = RecordingFakeColima()
         colima.commandResult = ProcessResult(
@@ -528,6 +552,8 @@ private final class RecordingDockerResourceProvider: DockerResourceProviding {
 
 private final class RecordingDockerContainerCommandController: DockerContainerCommandControlling {
     var error: Error?
+    var logsOutput: String?
+    var inspectOutput: String?
     private(set) var restartRequests: [(containerID: String, context: String?)] = []
 
     func start(containerID: String, context: String?) async throws -> ManagedCommandRun {
@@ -561,12 +587,12 @@ private final class RecordingDockerContainerCommandController: DockerContainerCo
 
     func logs(containerID: String, context: String?, timestamps: Bool, tail: Int) async throws -> String {
         if let error { throw error }
-        return "logs for \(containerID)"
+        return logsOutput ?? "logs for \(containerID)"
     }
 
     func inspect(containerID: String, context: String?) async throws -> String {
         if let error { throw error }
-        return #"{"Id":"\#(containerID)"}"#
+        return inspectOutput ?? #"{"Id":"\#(containerID)"}"#
     }
 
     func terminalCommand(containerID: String, context: String?, shell: String) -> String {
