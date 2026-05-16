@@ -192,6 +192,99 @@ struct AppStateBackendAggregationTests {
         #expect(results.first?.title == "Start default")
     }
 
+    @Test func successfulContainerLifecycleCommandRecordsEntryAndRefreshes() async {
+        let colima = RecordingFakeColima()
+        let docker = RecordingDockerContainerCommandController()
+        let state = AppState(
+            colima: colima,
+            profiles: [Self.profile(named: "default", state: .running)],
+            dockerContainerController: docker
+        )
+        state.selectedProfileID = "default"
+        state.selectedProfileDetail = Self.detail(profile: "default", state: .running)
+
+        await state.restartContainer(Self.container(id: "api", name: "api", state: "running"))
+
+        #expect(docker.restartRequests.map(\.containerID) == ["api"])
+        #expect(docker.restartRequests.map(\.context) == ["colima"])
+        #expect(colima.statusRequests.last == "default")
+        #expect(state.activeOperation == nil)
+        #expect(state.commandLog.first?.command == "Restart container api")
+        #expect(state.commandLog.first?.status == .succeeded)
+        #expect(state.commandLog.first?.output == "restarted api")
+    }
+
+    @Test func failedContainerLifecycleCommandRecordsFailure() async {
+        let colima = RecordingFakeColima()
+        let docker = RecordingDockerContainerCommandController()
+        docker.error = AppStateAggregationTestError(message: "restart failed")
+        let state = AppState(
+            colima: colima,
+            profiles: [Self.profile(named: "default", state: .running)],
+            dockerContainerController: docker
+        )
+        state.selectedProfileID = "default"
+        state.selectedProfileDetail = Self.detail(profile: "default", state: .running)
+
+        await state.restartContainer(Self.container(id: "api", name: "api", state: "running"))
+
+        guard case .failed("restart failed") = state.commandLog.first?.status else {
+            Issue.record("Expected failed command entry")
+            return
+        }
+        #expect(state.presentedError?.message == "restart failed")
+        #expect(state.activeOperation == nil)
+    }
+
+    @Test func containerLogsAndInspectLoadWithoutReplacingInventory() async throws {
+        let docker = RecordingDockerContainerCommandController()
+        let snapshot = Self.backendSnapshot(
+            profile: Self.profile(named: "default", state: .running),
+            status: Self.detail(profile: "default", state: .running),
+            dockerContainers: [Self.container(id: "api", name: "api", state: "running")],
+            issues: []
+        )
+        let state = AppState(
+            colima: RecordingFakeColima(),
+            profiles: [Self.profile(named: "default", state: .running)],
+            dockerContainerController: docker
+        )
+        state.selectedProfileID = "default"
+        state.selectedProfileDetail = Self.detail(profile: "default", state: .running)
+        state.backendSnapshot = snapshot
+
+        let logs = try await state.containerLogs(Self.container(id: "api", name: "api", state: "running"), timestamps: true, tail: 50)
+        let inspect = try await state.inspectContainer(Self.container(id: "api", name: "api", state: "running"))
+
+        #expect(logs == "logs for api")
+        #expect(inspect == #"{"Id":"api"}"#)
+        #expect(state.backendSnapshot?.docker?.containers.map(\.id) == ["api"])
+    }
+
+    @Test func containerLogsAndInspectAreRedactedAndCapped() async throws {
+        let docker = RecordingDockerContainerCommandController()
+        docker.logsOutput = String(repeating: "x", count: 200_010) + " API_TOKEN=abc123"
+        docker.inspectOutput = #"{"Id":"api","Config":{"Env":["PASSWORD=hunter2"],"Labels":{"api_key":"secret"}}}"#
+        let state = AppState(
+            colima: RecordingFakeColima(),
+            profiles: [Self.profile(named: "default", state: .running)],
+            dockerContainerController: docker
+        )
+        state.selectedProfileID = "default"
+        state.selectedProfileDetail = Self.detail(profile: "default", state: .running)
+
+        let logs = try await state.containerLogs(Self.container(id: "api", name: "api", state: "running"), timestamps: false, tail: 2_000)
+        let inspect = try await state.inspectContainer(Self.container(id: "api", name: "api", state: "running"))
+
+        #expect(logs.hasPrefix("[Output truncated to the last 200000 characters]"))
+        #expect(logs.contains("API_TOKEN=<redacted>"))
+        #expect(!logs.contains("abc123"))
+        #expect(inspect.contains(#""api_key":"<redacted>""#))
+        #expect(inspect.contains("PASSWORD=<redacted>"))
+        #expect(!inspect.contains("hunter2"))
+        #expect(!inspect.contains("secret"))
+    }
+
     @Test func commandLogRedactsBeforeTruncatingLongOutput() async {
         let colima = RecordingFakeColima()
         colima.commandResult = ProcessResult(
@@ -357,6 +450,7 @@ struct AppStateBackendAggregationTests {
     fileprivate static func backendSnapshot(
         profile: ColimaProfile,
         status: ColimaStatusDetail,
+        dockerContainers: [DockerContainerResource] = [],
         dockerStats: [DockerStatsResource] = [],
         diskUsage: [DockerDiskUsageResource] = [],
         issues: [BackendIssue]
@@ -367,7 +461,7 @@ struct AppStateBackendAggregationTests {
             docker: DockerResourceSnapshot(
                 context: status.dockerContext,
                 collectedAt: Date(),
-                containers: [],
+                containers: dockerContainers,
                 images: [],
                 volumes: [],
                 networks: [],
@@ -380,6 +474,22 @@ struct AppStateBackendAggregationTests {
             metrics: [],
             issues: issues,
             collectedAt: Date()
+        )
+    }
+
+    fileprivate static func container(id: String, name: String, state: String) -> DockerContainerResource {
+        DockerContainerResource(
+            id: id,
+            name: name,
+            image: "example/\(name):latest",
+            command: "run",
+            createdAt: "now",
+            runningFor: "1 minute",
+            ports: "0.0.0.0:8080->8080/tcp",
+            state: state,
+            status: state,
+            size: "1MB",
+            labels: [:]
         )
     }
 }
@@ -436,6 +546,69 @@ private final class RecordingDockerResourceProvider: DockerResourceProviding {
             diskUsage: [],
             issues: [],
             commandRuns: []
+        )
+    }
+}
+
+private final class RecordingDockerContainerCommandController: DockerContainerCommandControlling {
+    var error: Error?
+    var logsOutput: String?
+    var inspectOutput: String?
+    private(set) var restartRequests: [(containerID: String, context: String?)] = []
+
+    func start(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try result(action: "started", containerID: containerID)
+    }
+
+    func stop(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try result(action: "stopped", containerID: containerID)
+    }
+
+    func restart(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        restartRequests.append((containerID: containerID, context: context))
+        return try result(action: "restarted", containerID: containerID)
+    }
+
+    func pause(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try result(action: "paused", containerID: containerID)
+    }
+
+    func resume(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try result(action: "resumed", containerID: containerID)
+    }
+
+    func kill(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try result(action: "killed", containerID: containerID)
+    }
+
+    func remove(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try result(action: "removed", containerID: containerID)
+    }
+
+    func logs(containerID: String, context: String?, timestamps: Bool, tail: Int) async throws -> String {
+        if let error { throw error }
+        return logsOutput ?? "logs for \(containerID)"
+    }
+
+    func inspect(containerID: String, context: String?) async throws -> String {
+        if let error { throw error }
+        return inspectOutput ?? #"{"Id":"\#(containerID)"}"#
+    }
+
+    func terminalCommand(containerID: String, context: String?, shell: String) -> String {
+        "docker exec -it \(containerID) \(shell)"
+    }
+
+    private func result(action: String, containerID: String) throws -> ManagedCommandRun {
+        if let error { throw error }
+        return ManagedCommandRun(
+            request: ManagedCommandRequest(toolName: "docker", arguments: [action, containerID], purpose: "\(action) \(containerID)"),
+            executablePath: "/usr/bin/env",
+            launchedAt: Date(),
+            duration: 0,
+            terminationStatus: 0,
+            standardOutput: "\(action) \(containerID)",
+            standardError: ""
         )
     }
 }

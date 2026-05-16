@@ -69,4 +69,25 @@ final class ColimaStackUITests: XCTestCase {
         confirmationField.typeText("default")
         XCTAssertTrue(confirmButton.isEnabled)
     }
+
+    @MainActor
+    func testContainersExposeRowControlsAndInspector() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--mock-data", "-ApplePersistenceIgnoreState", "YES"]
+        app.launch()
+        ensureMainWindow(in: app)
+
+        let containersRoute = app.descendants(matching: .any)["route.containers"]
+        XCTAssertTrue(containersRoute.waitForExistence(timeout: 3))
+        app.activate()
+        containersRoute.click()
+
+        XCTAssertTrue(app.descendants(matching: .any)["containers.table"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["orders-api"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["container.inspector"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["container.inspector.tabs"].exists)
+        XCTAssertTrue(app.buttons["container.action.stop"].exists)
+        XCTAssertTrue(app.buttons["container.action.restart"].exists)
+        XCTAssertTrue(app.buttons["container.action.more"].exists)
+    }
 }

@@ -1,3 +1,4 @@
+import AppKit
 import Charts
 import SwiftUI
 
@@ -274,11 +275,41 @@ struct ContainersScreen: View {
     @EnvironmentObject private var appState: AppState
     let searchText: String
 
+    @State private var selectedContainerID: DockerContainerResource.ID?
+    @State private var filter: ContainerStateFilter = .all
+    @State private var selectedTab: ContainerInspectorTab = .overview
+    @State private var logsText = ""
+    @State private var inspectText = ""
+    @State private var logsError: String?
+    @State private var inspectError: String?
+    @State private var logsIncludeTimestamps = false
+    @State private var logsTail = 200
+    @State private var logsSearch = ""
+    @State private var inspectSearch = ""
+    @State private var deleteCandidate: DockerContainerResource?
+
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
+    private var allContainers: [DockerContainerResource] {
+        appState.backendSnapshot?.docker?.containers ?? []
+    }
+
     private var containers: [DockerContainerResource] {
-        (appState.backendSnapshot?.docker?.containers ?? []).filter {
-            matchesSearch(searchText, values: [$0.name, $0.image, $0.state, $0.status, $0.ports])
+        allContainers.filter {
+            filter.includes($0) && matchesSearch(searchText, values: [
+                $0.name,
+                $0.id,
+                $0.image,
+                $0.state,
+                $0.status,
+                $0.ports,
+                $0.composeProject ?? "",
+                $0.composeService ?? ""
+            ] + Array($0.labels.keys) + Array($0.labels.values))
         }.sorted { ($0.name.isEmpty ? $0.id : $0.name).localizedCaseInsensitiveCompare($1.name.isEmpty ? $1.id : $1.name) == .orderedAscending }
+    }
+
+    private var containerActionsAreBusy: Bool {
+        appState.activeOperation != nil || appState.isRefreshing
     }
 
     var body: some View {
@@ -306,8 +337,8 @@ struct ContainersScreen: View {
                 LazyVGrid(columns: columns, spacing: 12) {
                     MetricTile(title: "Profile", value: selectedProfile?.name ?? "Unavailable", icon: "rectangle.stack")
                     MetricTile(title: "Context", value: selectedDetail?.dockerContext ?? selectedProfile?.dockerContext ?? "Unavailable", icon: "square.stack.3d.down.forward")
-                    MetricTile(title: "Containers", value: "\(containers.count)", icon: "shippingbox")
-                    MetricTile(title: "Running", value: "\(containers.filter { $0.state.lowercased() == "running" }.count)", icon: "play.circle")
+                    MetricTile(title: "Containers", value: "\(allContainers.count)", icon: "shippingbox")
+                    MetricTile(title: "Running", value: "\(allContainers.filter { $0.state.lowercased() == "running" }.count)", icon: "play.circle")
                 }
 
                 SearchSummaryView(query: searchText, resultCount: containers.count, scopeLabel: WorkspaceRoute.containers.searchScopeLabel)
@@ -325,28 +356,217 @@ struct ContainersScreen: View {
                     ])
                 }
 
-                SectionCard(title: "Containers", subtitle: "Docker containers from the selected Colima context.", symbol: "shippingbox") {
+                SectionCard(title: "Containers", subtitle: "Manage lifecycle, ports, logs, inspect data, terminal commands, and files for the selected Colima context.", symbol: "shippingbox") {
+                    containerWorkspace
+                }
+            }
+        }
+        .sheet(item: $deleteCandidate) { container in
+            ContainerDeleteConfirmationSheet(container: container, isBusy: containerActionsAreBusy) {
+                deleteCandidate = nil
+            } onConfirm: {
+                guard !containerActionsAreBusy else { return }
+                deleteCandidate = nil
+                Task { await appState.removeContainer(container) }
+            }
+        }
+        .onChange(of: containers.map(\.id)) { _, ids in
+            guard let selectedContainerID, !ids.contains(selectedContainerID) else { return }
+            self.selectedContainerID = ids.first
+        }
+        .onChange(of: effectiveSelectedContainerID) { _, _ in
+            resetInspectorBuffers()
+        }
+    }
+
+    private var effectiveSelectedContainerID: DockerContainerResource.ID? {
+        selectedContainer?.id
+    }
+
+    private var selectedContainer: DockerContainerResource? {
+        if let selectedContainerID,
+           let container = containers.first(where: { $0.id == selectedContainerID }) ?? allContainers.first(where: { $0.id == selectedContainerID }) {
+            return container
+        }
+        return containers.first
+    }
+
+    @ViewBuilder
+    private var containerWorkspace: some View {
+        if allContainers.isEmpty {
+            SurfaceStateView(
+                title: "No containers",
+                message: "The selected Colima profile has no Docker containers.",
+                symbol: "shippingbox",
+                tone: .neutral
+            )
+        } else {
+            HStack(alignment: .top, spacing: 18) {
+                VStack(alignment: .leading, spacing: 14) {
+                    ContainerToolbar(
+                        filter: $filter,
+                        stoppedCount: allContainers.filter { ContainerStateFilter.stopped.includes($0) }.count,
+                        isBusy: containerActionsAreBusy,
+                        onRefresh: { Task { await appState.refreshAll() } },
+                        onPruneStopped: { copyContainerText(pruneStoppedCommand) }
+                    )
+
+                    let groups = DockerComposeContainerGroup.groups(from: containers)
+                    if !groups.isEmpty {
+                        ComposeGroupSummary(groups: groups)
+                    }
+
                     if containers.isEmpty {
                         SurfaceStateView(
-                            title: searchText.isEmpty ? "No containers" : "No matching containers",
-                            message: searchText.isEmpty ? "The selected Colima profile has no Docker containers." : "Adjust the search or clear the filter.",
+                            title: "No matching containers",
+                            message: "Adjust the search or state filter.",
                             symbol: "shippingbox",
                             tone: .neutral
                         )
                     } else {
-                        RecordList(columns: ["Name", "Image", "Ports", "State"]) {
-                            ForEach(containers) { container in
-                                RecordRow(
-                                    leading: container.name.isEmpty ? container.id : container.name,
-                                    secondary: container.image,
-                                    tertiary: container.ports.isEmpty ? "No exposed ports" : container.ports,
-                                    trailing: container.status.isEmpty ? container.state : container.status,
-                                    tone: container.health == .healthy ? .success : container.health == .warning ? .warning : .neutral
-                                )
-                            }
-                        }
+                        ContainerControlTable(
+                            containers: containers,
+                            selectedID: selectedContainer?.id,
+                            stats: appState.backendSnapshot?.docker?.stats ?? [],
+                            isBusy: containerActionsAreBusy,
+                            onSelect: selectContainer,
+                            onAction: handleAction
+                        )
                     }
                 }
+                .frame(minWidth: 620)
+
+                ContainerInspector(
+                    container: selectedContainer,
+                    stats: stats(for: selectedContainer),
+                    tab: $selectedTab,
+                    logsText: logsText,
+                    inspectText: inspectText,
+                    logsError: logsError,
+                    inspectError: inspectError,
+                    logsSearch: $logsSearch,
+                    inspectSearch: $inspectSearch,
+                    includeTimestamps: $logsIncludeTimestamps,
+                    tail: $logsTail,
+                    terminalCommand: terminalCommand(for: selectedContainer),
+                    isBusy: containerActionsAreBusy,
+                    onAction: handleAction,
+                    onLoadLogs: loadLogs,
+                    onLoadInspect: loadInspect
+                )
+                .frame(minWidth: 360, maxWidth: 440)
+            }
+        }
+    }
+
+    private var pruneStoppedCommand: String {
+        var arguments = ["docker"]
+        if let context = (selectedDetail?.dockerContext ?? selectedProfile?.dockerContext)?.nonEmpty {
+            arguments += ["--context", context]
+        }
+        arguments += ["container", "prune"]
+        return arguments.map(shellEscaped).joined(separator: " ")
+    }
+
+    private func stats(for container: DockerContainerResource?) -> DockerStatsResource? {
+        guard let container else { return nil }
+        return appState.backendSnapshot?.docker?.stats.first {
+            $0.id == container.id || $0.name == container.name || $0.name == container.displayName
+        }
+    }
+
+    private func terminalCommand(for container: DockerContainerResource?) -> String {
+        guard let container, container.availableActions.contains(.terminal) else { return "" }
+        return appState.terminalCommand(for: container)
+    }
+
+    private func handleAction(_ action: DockerContainerAction, _ container: DockerContainerResource) {
+        guard !action.isMutating || !containerActionsAreBusy else { return }
+
+        switch action {
+        case .start:
+            Task { await appState.startContainer(container) }
+        case .stop:
+            Task { await appState.stopContainer(container) }
+        case .restart:
+            Task { await appState.restartContainer(container) }
+        case .pause:
+            Task { await appState.pauseContainer(container) }
+        case .resume:
+            Task { await appState.resumeContainer(container) }
+        case .kill:
+            Task { await appState.killContainer(container) }
+        case .delete:
+            deleteCandidate = container
+        case .logs:
+            selectContainer(container)
+            selectedTab = .logs
+            loadLogs()
+        case .inspect:
+            selectContainer(container)
+            selectedTab = .inspect
+            loadInspect()
+        case .terminal:
+            guard container.availableActions.contains(.terminal) else { return }
+            selectContainer(container)
+            selectedTab = .terminal
+            copyContainerText(appState.terminalCommand(for: container))
+        case .openPort:
+            if let url = container.portBindings.first?.browserURL {
+                NSWorkspace.shared.open(url)
+            }
+        case .copyID:
+            copyContainerText(container.id)
+        case .copyImage:
+            copyContainerText(container.image)
+        case .copyPorts:
+            copyContainerText(container.ports)
+        }
+    }
+
+    private func selectContainer(_ container: DockerContainerResource) {
+        selectedContainerID = container.id
+    }
+
+    private func resetInspectorBuffers() {
+        logsText = ""
+        inspectText = ""
+        logsError = nil
+        inspectError = nil
+        logsSearch = ""
+        inspectSearch = ""
+    }
+
+    private func loadLogs() {
+        guard let container = selectedContainer else { return }
+        let requestedContainer = container
+        let requestedID = requestedContainer.id
+        logsError = nil
+        Task {
+            do {
+                let output = try await appState.containerLogs(requestedContainer, timestamps: logsIncludeTimestamps, tail: logsTail)
+                guard selectedContainer?.id == requestedID else { return }
+                logsText = output
+            } catch {
+                guard selectedContainer?.id == requestedID else { return }
+                logsError = error.localizedDescription
+            }
+        }
+    }
+
+    private func loadInspect() {
+        guard let container = selectedContainer else { return }
+        let requestedContainer = container
+        let requestedID = requestedContainer.id
+        inspectError = nil
+        Task {
+            do {
+                let output = prettyJSON(try await appState.inspectContainer(requestedContainer))
+                guard selectedContainer?.id == requestedID else { return }
+                inspectText = output
+            } catch {
+                guard selectedContainer?.id == requestedID else { return }
+                inspectError = error.localizedDescription
             }
         }
     }
@@ -373,6 +593,663 @@ struct ContainersScreen: View {
             }
         }
     }
+}
+
+private enum ContainerStateFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case running = "Running"
+    case stopped = "Stopped"
+    case paused = "Paused"
+    case error = "Error"
+
+    var id: String { rawValue }
+
+    func includes(_ container: DockerContainerResource) -> Bool {
+        switch self {
+        case .all:
+            true
+        case .running:
+            container.normalizedState == "running"
+        case .stopped:
+            ["exited", "created", "stopped"].contains(container.normalizedState)
+        case .paused:
+            container.normalizedState == "paused"
+        case .error:
+            container.normalizedState == "dead" || container.health == .error
+        }
+    }
+}
+
+private enum ContainerInspectorTab: String, CaseIterable, Identifiable {
+    case overview = "Overview"
+    case logs = "Logs"
+    case inspect = "Inspect"
+    case stats = "Stats"
+    case terminal = "Terminal"
+    case files = "Files"
+    case ports = "Ports"
+
+    var id: String { rawValue }
+}
+
+private struct ContainerToolbar: View {
+    @Binding var filter: ContainerStateFilter
+    let stoppedCount: Int
+    let isBusy: Bool
+    let onRefresh: () -> Void
+    let onPruneStopped: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Picker("Container state", selection: $filter) {
+                ForEach(ContainerStateFilter.allCases) { filter in
+                    Text(filter.rawValue).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 360)
+
+            Spacer()
+
+            Button {
+                onRefresh()
+            } label: {
+                Label("Refresh", systemImage: "arrow.clockwise")
+            }
+            .disabled(isBusy)
+
+            Button {
+                onPruneStopped()
+            } label: {
+                Label("Prune \(stoppedCount)", systemImage: "trash")
+            }
+            .disabled(isBusy || stoppedCount == 0)
+            .help("Copies `docker container prune`; execute destructive pruning from the terminal.")
+        }
+    }
+}
+
+private struct ComposeGroupSummary: View {
+    let groups: [DockerComposeContainerGroup]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Compose projects")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                ForEach(groups) { group in
+                    Text("\(group.projectName) · \(group.runningCount)/\(group.containers.count) running")
+                        .font(.caption)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color(nsColor: .underPageBackgroundColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+            }
+        }
+    }
+}
+
+private struct ContainerControlTable: View {
+    let containers: [DockerContainerResource]
+    let selectedID: DockerContainerResource.ID?
+    let stats: [DockerStatsResource]
+    let isBusy: Bool
+    let onSelect: (DockerContainerResource) -> Void
+    let onAction: (DockerContainerAction, DockerContainerResource) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ContainerTableHeader()
+            ForEach(containers) { container in
+                ContainerControlRow(
+                    container: container,
+                    stats: stat(for: container),
+                    isSelected: container.id == selectedID,
+                    isBusy: isBusy,
+                    onSelect: { onSelect(container) },
+                    onAction: { onAction($0, container) }
+                )
+            }
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityIdentifier("containers.table")
+    }
+
+    private func stat(for container: DockerContainerResource) -> DockerStatsResource? {
+        stats.first { $0.id == container.id || $0.name == container.name || $0.name == container.displayName }
+    }
+}
+
+private struct ContainerTableHeader: View {
+    private let columns = ["Name", "Image", "Status", "Ports", "CPU", "Memory", "Uptime", "Actions"]
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ForEach(columns, id: \.self) { column in
+                Text(column)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: column == "Actions" ? 120 : .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .underPageBackgroundColor))
+    }
+}
+
+private struct ContainerControlRow: View {
+    let container: DockerContainerResource
+    let stats: DockerStatsResource?
+    let isSelected: Bool
+    let isBusy: Bool
+    let onSelect: () -> Void
+    let onAction: (DockerContainerAction) -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(container.displayName)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let project = container.composeProject {
+                    Text([project, container.composeService].compactMap { $0 }.joined(separator: " / "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            tableText(container.image)
+            tableText(container.status.isEmpty ? container.state : container.status, color: tone.foregroundColor)
+            tableText(container.ports.isEmpty ? "No exposed ports" : container.ports)
+            tableText(stats?.cpuPercent.nonEmpty ?? "-")
+            tableText(stats?.memoryUsage.nonEmpty ?? "-")
+            tableText(container.runningFor.nonEmpty ?? container.createdAt.nonEmpty ?? "-")
+
+            ContainerRowActions(container: container, isBusy: isBusy, onAction: onAction)
+                .frame(maxWidth: 120, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+        .overlay(alignment: .bottom) {
+            Divider().padding(.leading, 12)
+        }
+        .contextMenu {
+            ContainerActionsMenu(container: container, isBusy: isBusy, onAction: onAction)
+        }
+        .accessibilityIdentifier("container.row.\(container.id)")
+    }
+
+    private func tableText(_ value: String, color: Color = .secondary) -> some View {
+        Text(value)
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var tone: WorkspaceTone {
+        switch container.health {
+        case .healthy: .success
+        case .warning: .warning
+        case .error: .critical
+        case .unknown: .neutral
+        }
+    }
+}
+
+private struct ContainerRowActions: View {
+    let container: DockerContainerResource
+    let isBusy: Bool
+    let onAction: (DockerContainerAction) -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if container.availableActions.contains(.start) {
+                iconButton("Start", "play.fill", .start)
+            }
+            if container.availableActions.contains(.stop) {
+                iconButton("Stop", "stop.fill", .stop)
+            }
+            if container.availableActions.contains(.restart) {
+                iconButton("Restart", "arrow.clockwise", .restart)
+            }
+            if container.availableActions.contains(.openPort) {
+                iconButton("Open port", "safari", .openPort)
+            }
+            Menu {
+                ContainerActionsMenu(container: container, isBusy: isBusy, onAction: onAction)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .disabled(isBusy)
+            .accessibilityIdentifier("container.action.more")
+        }
+    }
+
+    private func iconButton(_ label: String, _ symbol: String, _ action: DockerContainerAction) -> some View {
+        Button {
+            onAction(action)
+        } label: {
+            Image(systemName: symbol)
+        }
+        .buttonStyle(.borderless)
+        .disabled(isBusy)
+        .help(label)
+        .accessibilityIdentifier(action.accessibilityIdentifier)
+    }
+}
+
+private struct ContainerActionsMenu: View {
+    let container: DockerContainerResource
+    let isBusy: Bool
+    let onAction: (DockerContainerAction) -> Void
+
+    var body: some View {
+        ForEach(primaryActions, id: \.self) { action in
+            Button(action.title, systemImage: action.symbol) {
+                onAction(action)
+            }
+            .disabled(isBusy)
+        }
+        Divider()
+        Button("Logs", systemImage: "doc.text.magnifyingglass") { onAction(.logs) }
+        Button("Inspect JSON", systemImage: "curlybraces") { onAction(.inspect) }
+        if container.availableActions.contains(.terminal) {
+            Button("Copy terminal command", systemImage: "terminal") { onAction(.terminal) }
+        }
+        if container.availableActions.contains(.openPort) {
+            Button("Open port in browser", systemImage: "safari") { onAction(.openPort) }
+        }
+        Divider()
+        Button("Copy ID", systemImage: "doc.on.doc") { onAction(.copyID) }
+        Button("Copy image", systemImage: "doc.on.doc") { onAction(.copyImage) }
+        if container.availableActions.contains(.copyPorts) {
+            Button("Copy ports", systemImage: "doc.on.doc") { onAction(.copyPorts) }
+        }
+        if container.availableActions.contains(.delete) {
+            Divider()
+            Button("Delete...", systemImage: "trash", role: .destructive) { onAction(.delete) }
+                .disabled(isBusy)
+        }
+    }
+
+    private var primaryActions: [DockerContainerAction] {
+        [.start, .stop, .restart, .pause, .resume, .kill].filter { container.availableActions.contains($0) }
+    }
+}
+
+private extension DockerContainerAction {
+    var title: String {
+        switch self {
+        case .start: "Start"
+        case .stop: "Stop"
+        case .restart: "Restart"
+        case .pause: "Pause"
+        case .resume: "Resume"
+        case .kill: "Kill"
+        case .delete: "Delete"
+        case .logs: "Logs"
+        case .inspect: "Inspect"
+        case .terminal: "Terminal"
+        case .openPort: "Open Port"
+        case .copyID: "Copy ID"
+        case .copyImage: "Copy Image"
+        case .copyPorts: "Copy Ports"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .start: "play.fill"
+        case .stop: "stop.fill"
+        case .restart: "arrow.clockwise"
+        case .pause: "pause.fill"
+        case .resume: "playpause"
+        case .kill: "xmark.octagon"
+        case .delete: "trash"
+        case .logs: "doc.text"
+        case .inspect: "curlybraces"
+        case .terminal: "terminal"
+        case .openPort: "safari"
+        case .copyID, .copyImage, .copyPorts: "doc.on.doc"
+        }
+    }
+
+    var accessibilityIdentifier: String {
+        "container.action.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))"
+    }
+
+    var isMutating: Bool {
+        switch self {
+        case .start, .stop, .restart, .pause, .resume, .kill, .delete:
+            true
+        case .logs, .inspect, .terminal, .openPort, .copyID, .copyImage, .copyPorts:
+            false
+        }
+    }
+}
+
+private struct ContainerInspector: View {
+    let container: DockerContainerResource?
+    let stats: DockerStatsResource?
+    @Binding var tab: ContainerInspectorTab
+    let logsText: String
+    let inspectText: String
+    let logsError: String?
+    let inspectError: String?
+    @Binding var logsSearch: String
+    @Binding var inspectSearch: String
+    @Binding var includeTimestamps: Bool
+    @Binding var tail: Int
+    let terminalCommand: String
+    let isBusy: Bool
+    let onAction: (DockerContainerAction, DockerContainerResource) -> Void
+    let onLoadLogs: () -> Void
+    let onLoadInspect: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let container {
+                inspectorHeader(container)
+
+                Picker("Container detail", selection: $tab) {
+                    ForEach(ContainerInspectorTab.allCases) { tab in
+                        Text(tab.rawValue).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("container.inspector.tabs")
+
+                tabContent(container)
+            } else {
+                SurfaceStateView(
+                    title: "Select a container",
+                    message: "Choose a container to inspect logs, ports, stats, terminal commands, files, and raw Docker metadata.",
+                    symbol: "sidebar.right",
+                    tone: .info
+                )
+            }
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .accessibilityIdentifier("container.inspector")
+    }
+
+    private func inspectorHeader(_ container: DockerContainerResource) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(container.displayName)
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(container.id)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer()
+                Text(container.state.capitalized)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(container.health == .healthy ? .green : container.health == .error ? .red : .orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(nsColor: .underPageBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            ContainerRowActions(container: container, isBusy: isBusy) { onAction($0, container) }
+        }
+    }
+
+    @ViewBuilder
+    private func tabContent(_ container: DockerContainerResource) -> some View {
+        switch tab {
+        case .overview:
+            KeyValueGrid(rows: [
+                ("Image", container.image),
+                ("Command", container.command),
+                ("Status", container.status.isEmpty ? container.state : container.status),
+                ("Created", container.createdAt),
+                ("Running for", container.runningFor),
+                ("Size", container.size),
+                ("Compose", [container.composeProject, container.composeService].compactMap { $0 }.joined(separator: " / ")),
+                ("Labels", container.labels.isEmpty ? "No labels" : container.labels.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: "\n"))
+            ])
+        case .logs:
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Toggle("Timestamps", isOn: $includeTimestamps)
+                    Stepper("Tail \(tail)", value: $tail, in: 50...2000, step: 50)
+                    Button("Load") { onLoadLogs() }
+                    Button("Copy") { copyContainerText(logsText) }.disabled(logsText.isEmpty)
+                }
+                TextField("Search logs", text: $logsSearch)
+                if let logsError {
+                    StatusBanner(title: "Unable to load logs", message: logsError, symbol: "exclamationmark.triangle", tone: .warning)
+                }
+                TerminalLogView(text: filtered(logsText, query: logsSearch), minHeight: 260)
+            }
+        case .inspect:
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    TextField("Search inspect JSON", text: $inspectSearch)
+                    Button("Load") { onLoadInspect() }
+                    Button("Copy") { copyContainerText(inspectText) }.disabled(inspectText.isEmpty)
+                }
+                if let inspectError {
+                    StatusBanner(title: "Unable to inspect container", message: inspectError, symbol: "exclamationmark.triangle", tone: .warning)
+                }
+                TerminalLogView(text: inspectText.isEmpty ? "Load inspect JSON to view low-level Docker metadata." : filtered(inspectText, query: inspectSearch), minHeight: 260)
+            }
+        case .stats:
+            KeyValueGrid(rows: [
+                ("CPU", stats?.cpuPercent ?? "Unavailable"),
+                ("Memory", stats?.memoryUsage ?? "Unavailable"),
+                ("Memory %", stats?.memoryPercent ?? "Unavailable"),
+                ("Network I/O", stats?.networkIO ?? "Unavailable"),
+                ("Block I/O", stats?.blockIO ?? "Unavailable"),
+                ("PIDs", stats?.pids ?? "Unavailable")
+            ])
+        case .terminal:
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Interactive terminal command")
+                    .font(.headline)
+                TerminalLogView(text: terminalCommand.isEmpty ? "No terminal command available." : terminalCommand, minHeight: 90)
+                HStack {
+                    Button("Copy /bin/sh") { copyContainerText(terminalCommand) }
+                    Button("Copy /bin/bash") { copyContainerText(terminalCommand.replacingOccurrences(of: "/bin/sh", with: "/bin/bash")) }
+                }
+                .disabled(terminalCommand.isEmpty)
+            }
+        case .files:
+            let mounts = containerMounts(from: inspectText)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Volumes and bind-mount clues")
+                    .font(.headline)
+                if inspectText.isEmpty {
+                    Text("Load inspect JSON to show mounts for this container.")
+                        .foregroundStyle(.secondary)
+                    Button("Load Inspect") { onLoadInspect() }
+                } else if mounts.isEmpty {
+                    Text("No mounts were reported for this container.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(mounts.prefix(8)) { mount in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(mount.title)
+                                    .fontWeight(.medium)
+                                Text(mount.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            Spacer()
+                            if let url = mount.fileURL {
+                                Button {
+                                    NSWorkspace.shared.open(url)
+                                } label: {
+                                    Image(systemName: "folder")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Open mount source in Finder")
+                            }
+                        }
+                    }
+                }
+            }
+        case .ports:
+            VStack(alignment: .leading, spacing: 10) {
+                if container.portBindings.isEmpty {
+                    Text(container.ports.isEmpty ? "No published ports." : container.ports)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(container.portBindings) { binding in
+                        HStack {
+                            Text("\(binding.hostIP):\(binding.hostPort) -> \(binding.containerPort)/\(binding.proto)")
+                                .lineLimit(1)
+                            Spacer()
+                            if let url = binding.browserURL {
+                                Button("Open") { NSWorkspace.shared.open(url) }
+                            }
+                            Button("Copy") { copyContainerText("\(binding.hostIP):\(binding.hostPort)") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func filtered(_ text: String, query: String) -> String {
+        guard !query.isEmpty else { return text }
+        return text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { $0.localizedCaseInsensitiveContains(query) }
+            .joined(separator: "\n")
+    }
+}
+
+private struct ContainerMount: Identifiable, Hashable {
+    var type: String
+    var name: String
+    var source: String
+    var destination: String
+
+    var id: String { [type, name, source, destination].joined(separator: "|") }
+
+    var title: String {
+        name.nonEmpty ?? source.nonEmpty ?? destination.nonEmpty ?? "Mount"
+    }
+
+    var subtitle: String {
+        let target = destination.nonEmpty ?? "unknown target"
+        if let source = source.nonEmpty {
+            return "\(type.nonEmpty ?? "mount"): \(source) -> \(target)"
+        }
+        return "\(type.nonEmpty ?? "mount"): \(target)"
+    }
+
+    var fileURL: URL? {
+        guard type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "bind",
+              let source = source.nonEmpty,
+              source.hasPrefix("/") else {
+            return nil
+        }
+        return URL(fileURLWithPath: source)
+    }
+}
+
+private func containerMounts(from inspectText: String) -> [ContainerMount] {
+    guard let data = inspectText.data(using: .utf8),
+          let root = try? JSONSerialization.jsonObject(with: data) else {
+        return []
+    }
+
+    let object: [String: Any]?
+    if let array = root as? [[String: Any]] {
+        object = array.first
+    } else {
+        object = root as? [String: Any]
+    }
+
+    guard let mounts = object?["Mounts"] as? [[String: Any]] else { return [] }
+    return mounts.compactMap { mount in
+        let value = ContainerMount(
+            type: mount.string("Type"),
+            name: mount.string("Name"),
+            source: mount.string("Source"),
+            destination: mount.string("Destination", "Target")
+        )
+        return value.source.isEmpty && value.destination.isEmpty && value.name.isEmpty ? nil : value
+    }
+}
+
+private struct ContainerDeleteConfirmationSheet: View {
+    let container: DockerContainerResource
+    let isBusy: Bool
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+    @State private var confirmation = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Delete container")
+                .font(.title3.weight(.semibold))
+            Text("Type \(container.displayName) to delete this container. This removes the stopped container record and cannot be undone from ColimaStack.")
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            TextField(container.displayName, text: $confirmation)
+                .accessibilityIdentifier("container.delete.confirmationText")
+            HStack {
+                Spacer()
+                Button("Cancel") { onCancel() }
+                    .accessibilityIdentifier("container.delete.cancel")
+                Button("Delete", role: .destructive) { onConfirm() }
+                    .disabled(isBusy || confirmation != container.displayName)
+                    .accessibilityIdentifier("container.delete.confirm")
+            }
+        }
+        .padding(22)
+        .frame(width: 420)
+    }
+}
+
+private func copyContainerText(_ value: String) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(value, forType: .string)
+}
+
+private func shellEscaped(_ value: String) -> String {
+    let safeCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-")
+    if value.unicodeScalars.allSatisfy({ safeCharacters.contains($0) }) {
+        return value
+    }
+    return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+}
+
+private func prettyJSON(_ value: String) -> String {
+    guard let data = value.data(using: .utf8),
+          let object = try? JSONSerialization.jsonObject(with: data),
+          let formatted = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
+          let string = String(data: formatted, encoding: .utf8) else {
+        return value
+    }
+    return string
 }
 
 struct ImagesScreen: View {

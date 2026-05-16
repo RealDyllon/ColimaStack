@@ -69,6 +69,7 @@ final class AppState: ObservableObject {
 
     private let colima: ColimaControlling
     private let backend: BackendSnapshotProviding?
+    private let dockerContainerController: DockerContainerCommandControlling
     private let searchIndexer: BackendSearchIndexing
     private let userDefaults: UserDefaults?
     private let maxMonitorHistorySamples = 90
@@ -81,11 +82,13 @@ final class AppState: ObservableObject {
         colima: ColimaControlling,
         profiles: [ColimaProfile] = [],
         backend: BackendSnapshotProviding? = nil,
+        dockerContainerController: DockerContainerCommandControlling = LiveDockerContainerCommandService(),
         searchIndexer: BackendSearchIndexing? = nil,
         userDefaults: UserDefaults? = nil
     ) {
         self.colima = colima
         self.backend = backend
+        self.dockerContainerController = dockerContainerController
         self.searchIndexer = searchIndexer ?? BackendSearchIndexer()
         self.userDefaults = userDefaults
         self.profiles = profiles
@@ -321,6 +324,62 @@ final class AppState: ObservableObject {
         await runCommand("Update \(selectedProfileID)") { try await colima.update(profile: selectedProfileID) }
     }
 
+    func startContainer(_ container: DockerContainerResource) async {
+        await runDockerContainerCommand("Start container \(container.displayName)") {
+            try await dockerContainerController.start(containerID: container.id, context: selectedDockerContext)
+        }
+    }
+
+    func stopContainer(_ container: DockerContainerResource) async {
+        await runDockerContainerCommand("Stop container \(container.displayName)") {
+            try await dockerContainerController.stop(containerID: container.id, context: selectedDockerContext)
+        }
+    }
+
+    func restartContainer(_ container: DockerContainerResource) async {
+        await runDockerContainerCommand("Restart container \(container.displayName)") {
+            try await dockerContainerController.restart(containerID: container.id, context: selectedDockerContext)
+        }
+    }
+
+    func pauseContainer(_ container: DockerContainerResource) async {
+        await runDockerContainerCommand("Pause container \(container.displayName)") {
+            try await dockerContainerController.pause(containerID: container.id, context: selectedDockerContext)
+        }
+    }
+
+    func resumeContainer(_ container: DockerContainerResource) async {
+        await runDockerContainerCommand("Resume container \(container.displayName)") {
+            try await dockerContainerController.resume(containerID: container.id, context: selectedDockerContext)
+        }
+    }
+
+    func killContainer(_ container: DockerContainerResource) async {
+        await runDockerContainerCommand("Kill container \(container.displayName)") {
+            try await dockerContainerController.kill(containerID: container.id, context: selectedDockerContext)
+        }
+    }
+
+    func removeContainer(_ container: DockerContainerResource) async {
+        await runDockerContainerCommand("Delete container \(container.displayName)") {
+            try await dockerContainerController.remove(containerID: container.id, context: selectedDockerContext)
+        }
+    }
+
+    func containerLogs(_ container: DockerContainerResource, timestamps: Bool, tail: Int) async throws -> String {
+        let output = try await dockerContainerController.logs(containerID: container.id, context: selectedDockerContext, timestamps: timestamps, tail: tail)
+        return cappedLog(output)
+    }
+
+    func inspectContainer(_ container: DockerContainerResource) async throws -> String {
+        let output = try await dockerContainerController.inspect(containerID: container.id, context: selectedDockerContext)
+        return cappedLog(output)
+    }
+
+    func terminalCommand(for container: DockerContainerResource, shell: String = "/bin/sh") -> String {
+        dockerContainerController.terminalCommand(containerID: container.id, context: selectedDockerContext, shell: shell)
+    }
+
     func setKubernetes(enabled: Bool) async {
         guard let selectedProfileID else { return }
         await runCommand(enabled ? "Start Kubernetes" : "Stop Kubernetes") {
@@ -370,6 +429,10 @@ final class AppState: ObservableObject {
         return configuration
     }
 
+    private var selectedDockerContext: String? {
+        selectedProfileDetail?.dockerContext.nonEmpty ?? selectedProfile?.dockerContext.nonEmpty
+    }
+
     func saveEditingConfiguration() async {
         let configuration = editingConfiguration
         let mode = profileEditorMode ?? .create
@@ -408,6 +471,30 @@ final class AppState: ObservableObject {
             let result = try await operation()
             entry.status = .succeeded
             entry.output = cappedLog(result.combinedOutput)
+            replaceCommandEntry(entry)
+            await refreshAll()
+            return true
+        } catch {
+            entry.status = .failed(error.localizedDescription)
+            entry.output = cappedLog(error.localizedDescription)
+            replaceCommandEntry(entry)
+            presentedError = AppError(message: error.localizedDescription)
+            return false
+        }
+    }
+
+    @discardableResult
+    private func runDockerContainerCommand(_ label: String, operation: () async throws -> ManagedCommandRun) async -> Bool {
+        guard activeOperation == nil, !isRefreshing else { return false }
+        activeOperation = label
+        var entry = CommandLogEntry(date: Date(), command: label, status: .running, output: "")
+        commandLog.insert(entry, at: 0)
+        trimCommandLog()
+        defer { activeOperation = nil }
+        do {
+            let run = try await operation()
+            entry.status = .succeeded
+            entry.output = cappedLog(run.combinedOutput)
             replaceCommandEntry(entry)
             await refreshAll()
             return true
