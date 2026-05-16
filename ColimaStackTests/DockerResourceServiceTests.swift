@@ -54,6 +54,18 @@ struct DockerResourceServiceTests {
         #expect(dead.health == .error)
     }
 
+    @Test func portBindingBrowserURLsUseBoundHostAddress() {
+        let bound = DockerContainerResource.PortBinding(hostIP: "192.168.64.2", hostPort: 8080, containerPort: 80, proto: "tcp")
+        let wildcard = DockerContainerResource.PortBinding(hostIP: "0.0.0.0", hostPort: 8081, containerPort: 80, proto: "tcp")
+        let ipv6Wildcard = DockerContainerResource.PortBinding(hostIP: "::", hostPort: 8082, containerPort: 80, proto: "tcp")
+        let ipv6Bound = DockerContainerResource.PortBinding(hostIP: "fd00::1", hostPort: 8443, containerPort: 443, proto: "tcp")
+
+        #expect(bound.browserURL?.absoluteString == "http://192.168.64.2:8080")
+        #expect(wildcard.browserURL?.absoluteString == "http://localhost:8081")
+        #expect(ipv6Wildcard.browserURL?.absoluteString == "http://localhost:8082")
+        #expect(ipv6Bound.browserURL?.absoluteString == "https://[fd00::1]:8443")
+    }
+
     @Test func composeGroupsAreDerivedFromDockerLabels() {
         let containers = [
             Self.container(id: "api", name: "api-1", state: "running", labels: [

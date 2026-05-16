@@ -328,7 +328,18 @@ nonisolated struct DockerContainerResource: Identifiable, Hashable, Codable, Sen
         var browserURL: URL? {
             guard hostPort > 0 else { return nil }
             let scheme = containerPort == 443 || hostPort == 443 ? "https" : "http"
-            return URL(string: "\(scheme)://localhost:\(hostPort)")
+            return URL(string: "\(scheme)://\(browserHost):\(hostPort)")
+        }
+
+        private var browserHost: String {
+            let normalized = hostIP.trimmingCharacters(in: .whitespacesAndNewlines)
+            if normalized.isEmpty || normalized == "0.0.0.0" || normalized == "::" {
+                return "localhost"
+            }
+            if normalized.contains(":") && !normalized.hasPrefix("[") {
+                return "[\(normalized)]"
+            }
+            return normalized
         }
     }
 
