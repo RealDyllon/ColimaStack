@@ -294,7 +294,7 @@ struct AppStateBackendAggregationTests {
 
         let snapshot = await service.snapshot(profile: profile, status: status)
 
-        #expect(docker.contexts.isEmpty)
+        #expect(docker.socketPaths.isEmpty)
         #expect(snapshot.docker == nil)
     }
 
@@ -402,13 +402,13 @@ private final class RecordingBackendSnapshotProvider: BackendSnapshotProviding {
 }
 
 private final class RecordingDockerResourceProvider: DockerResourceProviding {
-    private(set) var contexts: [String?] = []
+    private(set) var socketPaths: [String] = []
 
-    func loadSnapshot(context: String?) async -> ResourceLoadState<DockerResourceSnapshot> {
-        contexts.append(context)
+    func loadSnapshot(socketPath: String) async -> ResourceLoadState<DockerResourceSnapshot> {
+        socketPaths.append(socketPath)
         return .loaded(
             DockerResourceSnapshot(
-                context: context ?? "",
+                context: socketPath,
                 collectedAt: Date(),
                 containers: [],
                 images: [],
@@ -423,10 +423,10 @@ private final class RecordingDockerResourceProvider: DockerResourceProviding {
         )
     }
 
-    func snapshot(context: String?) async throws -> DockerResourceSnapshot {
-        contexts.append(context)
+    func snapshot(socketPath: String) async throws -> DockerResourceSnapshot {
+        socketPaths.append(socketPath)
         return DockerResourceSnapshot(
-            context: context ?? "",
+            context: socketPath,
             collectedAt: Date(),
             containers: [],
             images: [],
@@ -462,7 +462,7 @@ private struct EmptyKubernetesResourceProvider: KubernetesResourceProviding {
 }
 
 private struct FailingDockerResourceProvider: DockerResourceProviding {
-    func loadSnapshot(context: String?) async -> ResourceLoadState<DockerResourceSnapshot> {
+    func loadSnapshot(socketPath: String) async -> ResourceLoadState<DockerResourceSnapshot> {
         .failed(
             BackendIssue(
                 severity: .error,
@@ -474,7 +474,7 @@ private struct FailingDockerResourceProvider: DockerResourceProviding {
         )
     }
 
-    func snapshot(context: String?) async throws -> DockerResourceSnapshot {
+    func snapshot(socketPath: String) async throws -> DockerResourceSnapshot {
         throw AppStateAggregationTestError(message: "docker: command not found")
     }
 }

@@ -265,12 +265,6 @@ struct ColimaCLITests {
                 stdout: "28.2.2",
                 stderr: ""
             ),
-            "docker context show": ProcessResult(
-                request: ProcessRequest(arguments: ["docker", "context", "show"]),
-                exitCode: 0,
-                stdout: "desktop-linux",
-                stderr: ""
-            ),
             "version --format {{.Server.Version}}": ProcessResult(
                 request: ProcessRequest(arguments: ["docker", "version", "--format", "{{.Server.Version}}"]),
                 exitCode: 0,
@@ -351,12 +345,6 @@ struct ColimaCLITests {
                 stdout: "29.2.1",
                 stderr: ""
             ),
-            "docker context show": ProcessResult(
-                request: ProcessRequest(arguments: ["docker", "context", "show"]),
-                exitCode: 0,
-                stdout: "desktop-linux",
-                stderr: ""
-            ),
             "--context colima version --format {{.Server.Version}}": ProcessResult(
                 request: ProcessRequest(arguments: ["docker", "--context", "colima", "version", "--format", "{{.Server.Version}}"]),
                 exitCode: 0,
@@ -398,12 +386,6 @@ struct ColimaCLITests {
                 request: ProcessRequest(arguments: ["docker", "version", "--format", "{{.Client.Version}}"]),
                 exitCode: 0,
                 stdout: "29.2.1",
-                stderr: ""
-            ),
-            "docker context show": ProcessResult(
-                request: ProcessRequest(arguments: ["docker", "context", "show"]),
-                exitCode: 0,
-                stdout: "desktop-linux",
                 stderr: ""
             ),
             "--context colima-dev version --format {{.Server.Version}}": ProcessResult(
@@ -449,12 +431,6 @@ struct ColimaCLITests {
                 stdout: "29.2.1",
                 stderr: ""
             ),
-            "docker context show": ProcessResult(
-                request: ProcessRequest(arguments: ["docker", "context", "show"]),
-                exitCode: 0,
-                stdout: "colima",
-                stderr: ""
-            )
         ])
         let cli = LiveColimaCLI(
             processRunner: runner,

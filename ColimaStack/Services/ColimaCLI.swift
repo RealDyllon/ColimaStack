@@ -438,18 +438,17 @@ struct LiveColimaCLI: ColimaCLI {
         guard let dockerURL = toolURL(named: "docker", in: tools) else {
             return DockerStatus(available: false, context: "", version: "", error: "Not installed")
         }
-        let context = await commandOutput(executableURL: dockerURL, arguments: ["context", "show"], timeout: 5)
+        let expectedContext = colimaStatus.profileName == "default" ? "colima" : "colima-\(colimaStatus.profileName)"
         if colimaStatus.state != .running {
             let version = await commandOutput(executableURL: dockerURL, arguments: ["version", "--format", "{{.Server.Version}}"], timeout: 8)
-            return DockerStatus(available: false, context: context.output, version: version.output, error: "Colima \(colimaStatus.profileName) is \(colimaStatus.state.label.lowercased())")
+            return DockerStatus(available: false, context: expectedContext, version: version.output, error: "Colima \(colimaStatus.profileName) is \(colimaStatus.state.label.lowercased())")
         }
         if let runtime = colimaStatus.runtime, runtime != .docker {
-            return DockerStatus(available: false, context: context.output, version: "", error: "Colima \(colimaStatus.profileName) uses \(runtime.label), not Docker")
+            return DockerStatus(available: false, context: expectedContext, version: "", error: "Colima \(colimaStatus.profileName) uses \(runtime.label), not Docker")
         }
-        let expectedContext = colimaStatus.profileName == "default" ? "colima" : "colima-\(colimaStatus.profileName)"
         let version = await commandOutput(executableURL: dockerURL, arguments: ["--context", expectedContext, "version", "--format", "{{.Server.Version}}"], timeout: 8)
         if let error = version.error {
-            return DockerStatus(available: false, context: context.output, version: "", error: error)
+            return DockerStatus(available: false, context: expectedContext, version: "", error: error)
         }
         return DockerStatus(available: true, context: expectedContext, version: version.output, error: "")
     }

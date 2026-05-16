@@ -243,7 +243,7 @@ struct LiveBackendSnapshotService: BackendSnapshotProviding {
     private let metricsCollector: MetricsCollecting
 
     init(
-        dockerService: DockerResourceProviding = LiveDockerResourceService(),
+        dockerService: DockerResourceProviding = SocketDockerResourceService(),
         kubernetesService: KubernetesResourceProviding = LiveKubernetesResourceService(),
         metricsCollector: MetricsCollecting = BackendMetricsCollector()
     ) {
@@ -286,6 +286,6 @@ struct LiveBackendSnapshotService: BackendSnapshotProviding {
         guard (status.runtime ?? profile.runtime) == .docker else {
             return .idle
         }
-        return await dockerService.loadSnapshot(context: status.dockerContext.isEmpty ? profile.dockerContext : status.dockerContext)
+        return await dockerService.loadSnapshot(socketPath: status.socket.nonEmpty ?? profile.socket)
     }
 }
