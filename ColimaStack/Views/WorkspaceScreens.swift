@@ -362,9 +362,10 @@ struct ContainersScreen: View {
             }
         }
         .sheet(item: $deleteCandidate) { container in
-            ContainerDeleteConfirmationSheet(container: container) {
+            ContainerDeleteConfirmationSheet(container: container, isBusy: containerActionsAreBusy) {
                 deleteCandidate = nil
             } onConfirm: {
+                guard !containerActionsAreBusy else { return }
                 deleteCandidate = nil
                 Task { await appState.removeContainer(container) }
             }
@@ -373,9 +374,13 @@ struct ContainersScreen: View {
             guard let selectedContainerID, !ids.contains(selectedContainerID) else { return }
             self.selectedContainerID = ids.first
         }
-        .onChange(of: selectedContainerID) { _, _ in
+        .onChange(of: effectiveSelectedContainerID) { _, _ in
             resetInspectorBuffers()
         }
+    }
+
+    private var effectiveSelectedContainerID: DockerContainerResource.ID? {
+        selectedContainer?.id
     }
 
     private var selectedContainer: DockerContainerResource? {
@@ -436,14 +441,14 @@ struct ContainersScreen: View {
                     stats: stats(for: selectedContainer),
                     tab: $selectedTab,
                     logsText: logsText,
-                    inspectText: formattedInspectText,
+                    inspectText: inspectText,
                     logsError: logsError,
                     inspectError: inspectError,
                     logsSearch: $logsSearch,
                     inspectSearch: $inspectSearch,
                     includeTimestamps: $logsIncludeTimestamps,
                     tail: $logsTail,
-                    terminalCommand: selectedContainer.map { appState.terminalCommand(for: $0) } ?? "",
+                    terminalCommand: terminalCommand(for: selectedContainer),
                     isBusy: containerActionsAreBusy,
                     onAction: handleAction,
                     onLoadLogs: loadLogs,
@@ -470,12 +475,9 @@ struct ContainersScreen: View {
         }
     }
 
-    private var formattedInspectText: String {
-        guard !inspectSearch.isEmpty else { return inspectText }
-        return inspectText
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { $0.localizedCaseInsensitiveContains(inspectSearch) }
-            .joined(separator: "\n")
+    private func terminalCommand(for container: DockerContainerResource?) -> String {
+        guard let container, container.availableActions.contains(.terminal) else { return "" }
+        return appState.terminalCommand(for: container)
     }
 
     private func handleAction(_ action: DockerContainerAction, _ container: DockerContainerResource) {
@@ -505,6 +507,7 @@ struct ContainersScreen: View {
             selectedTab = .inspect
             loadInspect()
         case .terminal:
+            guard container.availableActions.contains(.terminal) else { return }
             selectContainer(container)
             selectedTab = .terminal
             copyContainerText(appState.terminalCommand(for: container))
@@ -1050,7 +1053,7 @@ private struct ContainerInspector: View {
                 if let inspectError {
                     StatusBanner(title: "Unable to inspect container", message: inspectError, symbol: "exclamationmark.triangle", tone: .warning)
                 }
-                TerminalLogView(text: inspectText.isEmpty ? "Load inspect JSON to view low-level Docker metadata." : inspectText, minHeight: 260)
+                TerminalLogView(text: inspectText.isEmpty ? "Load inspect JSON to view low-level Docker metadata." : filtered(inspectText, query: inspectSearch), minHeight: 260)
             }
         case .stats:
             KeyValueGrid(rows: [
@@ -1162,7 +1165,11 @@ private struct ContainerMount: Identifiable, Hashable {
     }
 
     var fileURL: URL? {
-        guard let source = source.nonEmpty, source.hasPrefix("/") else { return nil }
+        guard type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "bind",
+              let source = source.nonEmpty,
+              source.hasPrefix("/") else {
+            return nil
+        }
         return URL(fileURLWithPath: source)
     }
 }
@@ -1194,6 +1201,7 @@ private func containerMounts(from inspectText: String) -> [ContainerMount] {
 
 private struct ContainerDeleteConfirmationSheet: View {
     let container: DockerContainerResource
+    let isBusy: Bool
     let onCancel: () -> Void
     let onConfirm: () -> Void
     @State private var confirmation = ""
@@ -1212,7 +1220,7 @@ private struct ContainerDeleteConfirmationSheet: View {
                 Button("Cancel") { onCancel() }
                     .accessibilityIdentifier("container.delete.cancel")
                 Button("Delete", role: .destructive) { onConfirm() }
-                    .disabled(confirmation != container.displayName)
+                    .disabled(isBusy || confirmation != container.displayName)
                     .accessibilityIdentifier("container.delete.confirm")
             }
         }
