@@ -125,7 +125,7 @@ struct OverviewScreen: View {
             subtitle: "Current profile, runtime health, and recent operations.",
             symbol: WorkspaceRoute.overview.symbol,
             accessory: {
-                HStack(spacing: 10) {
+                HStack(spacing: DesignSystem.Spacing.sm.rawValue) {
                     Button("Refresh") {
                         Task { await appState.refreshAll() }
                     }
@@ -139,29 +139,26 @@ struct OverviewScreen: View {
             }
         ) {
             if !appState.hasCollectedDiagnostics || (appState.isRefreshing && appState.profiles.isEmpty) {
-                SurfaceStateView(
+                EmptyStateView(
+                    kind: .loading,
                     title: "Loading Colima environment",
-                    message: "Running startup diagnostics, locating profiles, and capturing the current runtime state.",
-                    symbol: "progress.indicator",
-                    tone: .info
+                    message: "Running startup diagnostics, locating profiles, and capturing the current runtime state."
                 )
             } else if !appState.hasColima {
-                SurfaceStateView(
+                EmptyStateView(
+                    kind: .unavailable,
                     title: "Colima dependency required",
-                    message: "Install or expose the `colima` CLI on PATH, then refresh diagnostics to populate the workspace.",
-                    symbol: "externaldrive.badge.xmark",
-                    tone: .warning
+                    message: "Install or expose the `colima` CLI on PATH, then refresh diagnostics to populate the workspace."
                 ) {
                     Button("Refresh") {
                         Task { await appState.refreshAll() }
                     }
                 }
             } else if appState.profiles.isEmpty {
-                SurfaceStateView(
+                EmptyStateView(
+                    kind: .noData,
                     title: "No profiles configured",
-                    message: "Create a profile to define runtime, resources, mounts, networking, and Kubernetes options for this machine.",
-                    symbol: "rectangle.stack.badge.plus",
-                    tone: .info
+                    message: "Create a profile to define runtime, resources, mounts, networking, and Kubernetes options for this machine."
                 ) {
                     Button("Create Profile") {
                         appState.createProfile()
@@ -193,7 +190,7 @@ struct OverviewScreen: View {
                     )
                 }
 
-                LazyVGrid(columns: columns, spacing: 12) {
+                LazyVGrid(columns: columns, spacing: DesignSystem.Spacing.md.rawValue) {
                     MetricTile(title: "Profile", value: selectedProfile?.name ?? "Unavailable", icon: "rectangle.stack")
                     MetricTile(title: "State", value: selectedProfile?.state.label ?? "Unknown", icon: "power", tone: tone(for: selectedProfile?.state ?? .unknown))
                     MetricTile(title: "Runtime", value: selectedProfile?.runtime?.label ?? "Unknown", icon: "server.rack")

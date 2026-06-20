@@ -1,26 +1,33 @@
 # Tasks: apple-design-award-ui
 
+> **Implementation status (last commit):** Group 1 (Design system
+> foundation) is complete and building green. The Xcode project
+> auto-includes files in `ColimaStack/` via a synchronized folder, so
+> the new `ColimaStack/DesignSystem/` module is wired up without any
+> `project.pbxproj` edits. Tasks 2.x–12.x are pending and will be
+> implemented in subsequent PRs.
+
 ## 1. Design system foundation
 
-- [ ] 1.1 Create `ColimaStack/DesignSystem/` folder structure with `Tokens/` and `Primitives/` subfolders
-- [ ] 1.2 Implement `DesignSystem` namespace and `TextStyle` (display, title1, title2, title3, body, caption, code, mono) backed by `Font`
-- [ ] 1.3 Implement `ColorRole` (text/{primary,secondary,tertiary}, surface/{canvas,raised,sunken,inverse}, border/{subtle,strong}, accent/primary, status/{success,warning,critical,info,neutral}) using `Color(nsColor:)` and asset-catalog brand colors, with light/dark resolution
-- [ ] 1.4 Implement `Spacing` (xs 4, sm 8, md 16, lg 24, xl 32, 2xl 48), `Radius` (control 6, card 12, pill 999), `Elevation` (canvas/raised/sunken as `Material` and stroke combinations)
-- [ ] 1.5 Implement `Motion` (fast 150ms, default 220ms, slow 350ms; standard, emphasized, spring) with `shouldReduceMotion` override
-- [ ] 1.6 Port `SectionCard` to consume tokens (raised surface, subtle hairline, card radius, title3 title, caption subtitle)
-- [ ] 1.7 Port `MetricTile` to consume tokens (caption label, title3 value, color-role-driven state color)
-- [ ] 1.8 Port `StatusBanner` to consume tokens (icon `frame(width:)` for alignment, color-role-driven tints)
-- [ ] 1.9 Implement `EmptyStateView` with `kind: EmptyStateKind` (noResults, noData, loading, error, unavailable, disabled) consuming tokens; rename and remove `SurfaceStateView`
-- [ ] 1.10 Port `KeyValueGrid` to use `Grid` with token-driven spacing and truncation rules
-- [ ] 1.11 Implement `IconBadge` (rounded rectangle backdrop + icon + optional count) consuming tokens
-- [ ] 1.12 Port `StateDot` to consume `ColorRole` (success/info/warning/critical/neutral) and a 10pt diameter
-- [ ] 1.13 Implement `ToolbarActionButton` (icon-only with optional label) consuming tokens and respecting icon-only / icon+label / label-only toolbar modes
-- [ ] 1.14 Implement `PrimaryButton` and `DestructiveButton` with token-driven prominence (filled / tinted / borderless variants)
-- [ ] 1.15 Implement `Icon` namespace with semantic accessors (`Icon.brand`, `Icon.runtime.*`, `Icon.profile.*`, `Icon.kubernetes.*`, `Icon.action.*`, `Icon.section.*`, `Icon.empty.*`) sized via `.iconControl` (16pt), `.iconRow` (20pt), `.iconHero` (48pt)
-- [ ] 1.16 Add `BrandMark` asset to `Assets.xcassets` and reference from `Icon.brand`
-- [ ] 1.17 Add a SwiftLint custom rule that fails the build if `Image(systemName:`, `Color(`, `Color.`, or `nsColor:` appears in `ColimaStack/Views/**` outside of `DesignSystem/`
-- [ ] 1.18 Add a contrast-test XCTest case that asserts every (text role, surface role) pair used in the app passes WCAG 2.1 AA in both light and dark mode
-- [ ] 1.19 Migrate `OverviewScreen` to the new design system end-to-end as the reference implementation; capture before/after screenshots
+- [x] 1.1 Create `ColimaStack/DesignSystem/` folder structure with `Tokens/` and `Primitives/` subfolders
+- [x] 1.2 Implement `DesignSystem` namespace and `TextStyle` (display, title1, title2, title3, body, caption, code, mono) backed by `Font`
+- [x] 1.3 Implement `ColorRole` (text/{primary,secondary,tertiary}, surface/{canvas,raised,sunken,inverse}, border/{subtle,strong}, accent/primary, status/{success,warning,critical,info,neutral}) using `Color(nsColor:)` and asset-catalog brand colors, with light/dark resolution
+- [x] 1.4 Implement `Spacing` (xs 4, sm 8, md 16, lg 24, xl 32, 2xl 48), `Radius` (control 6, card 12, pill 999), `Elevation` (canvas/raised/sunken as `Material` and stroke combinations)
+- [x] 1.5 Implement `Motion` (fast 150ms, default 220ms, slow 350ms; standard, emphasized, spring) with `shouldReduceMotion` override
+- [x] 1.6 Port `SectionCard` to consume tokens (raised surface, subtle hairline, card radius, title3 title, caption subtitle)
+- [x] 1.7 Port `MetricTile` to consume tokens (caption label, title3 value, color-role-driven state color)
+- [x] 1.8 Port `StatusBanner` to consume tokens (icon `frame(width:)` for alignment, color-role-driven tints)
+- [x] 1.9 Implement `EmptyStateView` with `kind: EmptyStateKind` (noResults, noData, loading, error, unavailable, disabled) consuming tokens; rename and remove `SurfaceStateView`
+- [x] 1.10 Port `KeyValueGrid` to use `Grid` with token-driven spacing and truncation rules
+- [x] 1.11 Implement `IconBadge` (rounded rectangle backdrop + icon + optional count) consuming tokens
+- [x] 1.12 Port `StateDot` to consume `ColorRole` (success/info/warning/critical/neutral) and a 10pt diameter
+- [x] 1.13 Implement `ToolbarActionButton` (icon-only with optional label) consuming tokens and respecting icon-only / icon+label / label-only toolbar modes
+- [x] 1.14 Implement `PrimaryButton` and `DestructiveButton` with token-driven prominence (filled / tinted / borderless variants)
+- [x] 1.15 Implement `Icon` namespace with semantic accessors (`Icon.brand`, `Icon.runtime.*`, `Icon.profile.*`, `Icon.kubernetes.*`, `Icon.action.*`, `Icon.section.*`, `Icon.empty.*`) sized via `.iconControl` (16pt), `.iconRow` (20pt), `.iconHero` (48pt)
+- [x] 1.16 Add `BrandMark` asset to `Assets.xcassets` and reference from `Icon.brand`
+- [x] 1.17 Add a SwiftLint custom rule that fails the build if `Image(systemName:`, `Color(`, `Color.`, or `nsColor:` appears in `ColimaStack/Views/**` outside of `DesignSystem/`
+- [x] 1.18 Add a contrast-test XCTest case that asserts every (text role, surface role) pair used in the app passes WCAG 2.1 AA in both light and dark mode
+- [x] 1.19 Migrate `OverviewScreen` to the new design system end-to-end as the reference implementation; capture before/after screenshots
 
 ## 2. Workspace chrome
 

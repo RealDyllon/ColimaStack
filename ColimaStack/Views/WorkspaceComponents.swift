@@ -1,38 +1,12 @@
 import AppKit
 import SwiftUI
 
-enum WorkspaceTone {
-    case neutral
-    case info
-    case success
-    case warning
-    case critical
-
-    var foregroundColor: Color {
-        switch self {
-        case .neutral: .secondary
-        case .info: .blue
-        case .success: .green
-        case .warning: .orange
-        case .critical: .red
-        }
-    }
-
-    var backgroundColor: Color {
-        switch self {
-        case .neutral:
-            Color(nsColor: .controlBackgroundColor)
-        case .info:
-            Color.blue.opacity(0.12)
-        case .success:
-            Color.green.opacity(0.12)
-        case .warning:
-            Color.orange.opacity(0.14)
-        case .critical:
-            Color.red.opacity(0.12)
-        }
-    }
-}
+// The shared design-system primitives (SectionCard, MetricTile, StatusBanner,
+// KeyValueGrid, EmptyStateView, StateDot, IconBadge) now live under
+// `ColimaStack/DesignSystem/Primitives/` and are imported automatically
+// through the same module. The legacy duplicates that previously lived
+// here have been removed; the migration is in progress as part of
+// openspec/changes/apple-design-award-ui/.
 
 struct DetailScreenLayout<Accessory: View, Content: View>: View {
     let title: String
@@ -115,201 +89,6 @@ private struct ScrollViewConfigurationView: NSViewRepresentable {
         guard let scrollView = view.enclosingScrollView else { return }
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = false
-    }
-}
-
-struct SectionCard<Content: View>: View {
-    let title: String
-    let subtitle: String?
-    let symbol: String
-    @ViewBuilder private let content: Content
-
-    init(
-        title: String,
-        subtitle: String? = nil,
-        symbol: String,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.subtitle = subtitle
-        self.symbol = symbol
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label(title, systemImage: symbol)
-                        .font(.headline)
-                    if let subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-            }
-
-            content
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-struct SurfaceStateView<Actions: View>: View {
-    let title: String
-    let message: String
-    let symbol: String
-    let tone: WorkspaceTone
-    @ViewBuilder private let actions: Actions
-
-    init(
-        title: String,
-        message: String,
-        symbol: String,
-        tone: WorkspaceTone = .neutral,
-        @ViewBuilder actions: () -> Actions
-    ) {
-        self.title = title
-        self.message = message
-        self.symbol = symbol
-        self.tone = tone
-        self.actions = actions()
-    }
-
-    init(
-        title: String,
-        message: String,
-        symbol: String,
-        tone: WorkspaceTone = .neutral
-    ) where Actions == EmptyView {
-        self.init(title: title, message: message, symbol: symbol, tone: tone, actions: { EmptyView() })
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Image(systemName: symbol)
-                .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(tone.foregroundColor)
-            Text(title)
-                .font(.title3.weight(.semibold))
-            Text(message)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            actions
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(22)
-        .background(tone.backgroundColor)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-struct StatusBanner<Actions: View>: View {
-    let title: String
-    let message: String
-    let symbol: String
-    let tone: WorkspaceTone
-    @ViewBuilder private let actions: Actions
-
-    init(
-        title: String,
-        message: String,
-        symbol: String,
-        tone: WorkspaceTone,
-        @ViewBuilder actions: () -> Actions
-    ) {
-        self.title = title
-        self.message = message
-        self.symbol = symbol
-        self.tone = tone
-        self.actions = actions()
-    }
-
-    init(
-        title: String,
-        message: String,
-        symbol: String,
-        tone: WorkspaceTone
-    ) where Actions == EmptyView {
-        self.init(title: title, message: message, symbol: symbol, tone: tone, actions: { EmptyView() })
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol)
-                .foregroundStyle(tone.foregroundColor)
-                .font(.headline)
-                .frame(width: 20)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .fontWeight(.semibold)
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 12)
-            actions
-        }
-        .padding(14)
-        .background(tone.backgroundColor)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-struct MetricTile: View {
-    let title: String
-    let value: String
-    let icon: String
-    var tone: WorkspaceTone = .neutral
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: icon)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title3.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .foregroundStyle(tone == .neutral ? .primary : tone.foregroundColor)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
-struct KeyValueGrid: View {
-    let rows: [(String, String)]
-
-    var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
-            ForEach(rows.filter { !$0.0.isEmpty }, id: \.0) { key, value in
-                GridRow {
-                    Text(key)
-                        .foregroundStyle(.secondary)
-                    Text(value.isEmpty ? "Unavailable" : value)
-                        .textSelection(.enabled)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .contextMenu {
-                            Button("Copy") {
-                                copyToPasteboard(value)
-                            }
-                            .disabled(value.isEmpty)
-                        }
-                }
-            }
-        }
     }
 }
 
@@ -466,35 +245,9 @@ struct TerminalLogView: View {
     }
 }
 
-private func copyToPasteboard(_ value: String) {
+func copyToPasteboard(_ value: String) {
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(value, forType: .string)
-}
-
-struct StatusDot: View {
-    let state: ProfileState
-
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 9, height: 9)
-            .accessibilityLabel(state.label)
-    }
-
-    private var color: Color {
-        switch state {
-        case .running:
-            .green
-        case .stopped:
-            .secondary
-        case .degraded, .broken:
-            .orange
-        case .starting, .stopping:
-            .blue
-        case .unknown:
-            .gray
-        }
-    }
 }
 
 struct ToolRow: View {
