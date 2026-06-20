@@ -1,0 +1,4 @@
+interface:
+  display_name: "Starlight Features"
+  short_description: "Use Starlight Theme Next.js features and patterns."
+  default_prompt: "Use the starlight-features skill to add or review Starlight Theme Next.js docs features."
