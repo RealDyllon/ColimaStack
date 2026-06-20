@@ -94,11 +94,48 @@ struct ColimaStackMenuBarMenu: View {
                 if !profile.dockerContext.isEmpty {
                     Label(profile.dockerContext, systemImage: "point.3.connected.trianglepath.dotted")
                 }
+                if appState.useEventBus {
+                    connectionStatusLabels
+                }
             } else if appState.hasColima {
                 Label("No active profile", systemImage: "cube.transparent")
             } else {
                 Label("Colima setup required", systemImage: "exclamationmark.triangle")
             }
+        }
+    }
+
+    private var connectionStatusLabels: some View {
+        Group {
+            if appState.connectionStatus.docker != .connected {
+                Label(connectionLabel(for: appState.connectionStatus.docker, name: "Docker"), systemImage: connectionSymbol(for: appState.connectionStatus.docker))
+            }
+            if appState.connectionStatus.kubernetes != .connected {
+                Label(connectionLabel(for: appState.connectionStatus.kubernetes, name: "Kubernetes"), systemImage: connectionSymbol(for: appState.connectionStatus.kubernetes))
+            }
+            if appState.connectionStatus.colima != .connected {
+                Label(connectionLabel(for: appState.connectionStatus.colima, name: "Colima"), systemImage: connectionSymbol(for: appState.connectionStatus.colima))
+            }
+        }
+    }
+
+    private func connectionLabel(for state: ConnectionState, name: String) -> String {
+        switch state {
+        case .connected: return "\(name) connected"
+        case .disconnected: return "\(name) disconnected"
+        case .connecting: return "\(name) connecting…"
+        case .reconnecting(let attempt): return "\(name) reconnecting (attempt \(attempt))"
+        case .failed(let reason): return "\(name) failed: \(reason)"
+        }
+    }
+
+    private func connectionSymbol(for state: ConnectionState) -> String {
+        switch state {
+        case .connected: return "checkmark.circle"
+        case .disconnected: return "circle.slash"
+        case .connecting: return "arrow.triangle.2.circlepath"
+        case .reconnecting: return "arrow.triangle.2.circlepath"
+        case .failed: return "exclamationmark.triangle"
         }
     }
 

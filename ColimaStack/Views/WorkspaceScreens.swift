@@ -185,6 +185,15 @@ struct OverviewScreen: View {
                     )
                 }
 
+                if appState.useEventBus, appState.connectionStatus.anyDegraded {
+                    StatusBanner(
+                        title: "Live feeds reconnecting",
+                        message: connectionStatusSummary,
+                        symbol: "arrow.triangle.2.circlepath",
+                        tone: .warning
+                    )
+                }
+
                 LazyVGrid(columns: columns, spacing: 12) {
                     MetricTile(title: "Profile", value: selectedProfile?.name ?? "Unavailable", icon: "rectangle.stack")
                     MetricTile(title: "State", value: selectedProfile?.state.label ?? "Unknown", icon: "power", tone: tone(for: selectedProfile?.state ?? .unknown))
@@ -268,6 +277,17 @@ struct OverviewScreen: View {
         appState.commandLog.filter {
             matchesSearch(searchText, values: [$0.command, $0.output, $0.status.label])
         }
+    }
+
+    private var connectionStatusSummary: String {
+        var parts: [String] = []
+        if case .reconnecting = appState.connectionStatus.docker { parts.append("Docker") }
+        if case .reconnecting = appState.connectionStatus.kubernetes { parts.append("Kubernetes") }
+        if case .reconnecting = appState.connectionStatus.colima { parts.append("Colima") }
+        if case .failed = appState.connectionStatus.docker { parts.append("Docker") }
+        if case .failed = appState.connectionStatus.kubernetes { parts.append("Kubernetes") }
+        if case .failed = appState.connectionStatus.colima { parts.append("Colima") }
+        return parts.isEmpty ? "Some live feeds are reconnecting." : "\(parts.joined(separator: ", ")) feed(s) reconnecting."
     }
 }
 
@@ -2281,6 +2301,12 @@ private struct SettingsPaneContent: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    Toggle("Live event feeds (experimental)", isOn: $appState.useEventBus)
+                        .toggleStyle(.switch)
+                        .help("When on, container/pod/log updates arrive via live feeds instead of polling. Restart the app after changing.")
+                    Toggle("Stream command output", isOn: $appState.useStreamingCommandOutput)
+                        .toggleStyle(.switch)
+                        .help("When on, colima lifecycle commands stream output live to the Activity view.")
                     LabeledContent("Selected profile", value: appState.selectedProfile?.name ?? "None")
                     LabeledContent("Active section", value: appState.selectedSection.title)
                     LabeledContent("Refresh state", value: appState.isRefreshing ? "Refreshing" : "Idle")
@@ -2426,6 +2452,11 @@ private struct CommandEntryRow: View {
                 Text(entry.command)
                     .fontWeight(.medium)
                 Spacer()
+                if entry.status.isRunning {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 12, height: 12)
+                }
                 Text(entry.status.label)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(statusTone.foregroundColor)

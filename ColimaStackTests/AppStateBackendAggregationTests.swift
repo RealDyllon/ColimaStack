@@ -429,7 +429,7 @@ struct AppStateBackendAggregationTests {
         )
     }
 
-    fileprivate static func detail(profile: String, state: ProfileState) -> ColimaStatusDetail {
+    static func detail(profile: String, state: ProfileState) -> ColimaStatusDetail {
         ColimaStatusDetail(
             profileName: profile,
             state: state,

@@ -47,6 +47,105 @@ protocol ColimaCLI {
     func update(profile: String) async throws -> ProcessResult
     func template() async throws -> String
     func configuration(profile: String) async throws -> ProfileConfiguration?
+
+    /// Streaming variants for lifecycle commands. Default implementations wrap the
+    /// buffered calls into a one-event stream; `LiveColimaCLI` overrides with real
+    /// chunk-by-chunk streaming via `StreamingProcessRunning`.
+    func streamStart(_ configuration: ProfileConfiguration, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error>
+    func streamStop(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error>
+    func streamRestart(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error>
+    func streamDelete(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error>
+    func streamKubernetes(profile: String, enabled: Bool, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error>
+    func streamUpdate(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error>
+}
+
+extension ColimaCLI {
+    /// Default streaming implementation: run the buffered command and emit a single
+    /// terminal `result` event (or finish with the thrown error). Used by mock/fake
+    /// conformers and as a fallback when streaming is unavailable.
+    func streamStart(_ configuration: ProfileConfiguration, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let result = try await self.start(configuration)
+                    continuation.yield(.result(result))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    func streamStop(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let result = try await self.stop(profile: profile)
+                    continuation.yield(.result(result))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    func streamRestart(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let result = try await self.restart(profile: profile)
+                    continuation.yield(.result(result))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    func streamDelete(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let result = try await self.delete(profile: profile)
+                    continuation.yield(.result(result))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    func streamKubernetes(profile: String, enabled: Bool, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let result = try await self.kubernetes(profile: profile, enabled: enabled)
+                    continuation.yield(.result(result))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    func streamUpdate(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let result = try await self.update(profile: profile)
+                    continuation.yield(.result(result))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
 }
 
 extension ColimaCLI {
@@ -62,6 +161,7 @@ struct LiveColimaCLI: ColimaCLI {
     }
 
     private let processRunner: AsyncProcessRunning
+    private let streamingRunner: StreamingProcessRunning
     private let toolLocator: ToolLocator
     private let fileManager: FileManager
     private let environment: [String: String]
@@ -69,12 +169,14 @@ struct LiveColimaCLI: ColimaCLI {
 
     init(
         processRunner: ProcessRunner = LiveProcessRunner(),
+        streamingRunner: StreamingProcessRunning = LiveStreamingProcessRunner(),
         toolLocator: ToolLocator = LiveToolLocator(),
         fileManager: FileManager = .default,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         executionMode: ExecutionMode = .resolvedPath
     ) {
         self.processRunner = AsyncProcessRunnerAdapter(processRunner: processRunner)
+        self.streamingRunner = streamingRunner
         self.toolLocator = toolLocator
         self.fileManager = fileManager
         self.environment = environment
@@ -297,6 +399,29 @@ struct LiveColimaCLI: ColimaCLI {
     }
 
     private func run(_ command: ColimaCommand) async throws -> ColimaCommandLogEntry {
+        let request = try processRequest(for: command)
+        do {
+            let result = try await processRunner.run(request)
+            return ColimaCommandLogEntry(
+                executablePath: result.executableURL.path,
+                arguments: EnvironmentRedactor.redacted(result.arguments),
+                environmentOverrides: EnvironmentRedactor.redacted(result.environment),
+                launchedAt: result.launchedAt,
+                duration: result.duration,
+                terminationStatus: result.terminationStatus,
+                standardOutput: EnvironmentRedactor.redacted(result.standardOutput),
+                standardError: EnvironmentRedactor.redacted(result.standardError)
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            throw ColimaCLIError.processFailure(underlying: EnvironmentRedactor.redacted(error.localizedDescription))
+        }
+    }
+
+    /// Build a `ProcessRequest` for a colima command, mapping tool-location errors to
+    /// `ColimaCLIError`. Shared by the buffered `run(_:)` and the streaming methods.
+    private func processRequest(for command: ColimaCommand) throws -> ProcessRequest {
         do {
             let colimaURL = try toolLocator.require("colima")
             let executableURL: URL
@@ -309,25 +434,11 @@ struct LiveColimaCLI: ColimaCLI {
                 executableURL = colimaURL
                 arguments = command.arguments
             }
-
-            let result = try await processRunner.run(
-                ProcessRequest(
-                    executableURL: executableURL,
-                    arguments: arguments,
-                    environment: environmentWithToolSearchPath(command.environment),
-                    timeout: command.timeout
-                )
-            )
-
-            return ColimaCommandLogEntry(
-                executablePath: result.executableURL.path,
-                arguments: EnvironmentRedactor.redacted(result.arguments),
-                environmentOverrides: EnvironmentRedactor.redacted(result.environment),
-                launchedAt: result.launchedAt,
-                duration: result.duration,
-                terminationStatus: result.terminationStatus,
-                standardOutput: EnvironmentRedactor.redacted(result.standardOutput),
-                standardError: EnvironmentRedactor.redacted(result.standardError)
+            return ProcessRequest(
+                executableURL: executableURL,
+                arguments: arguments,
+                environment: environmentWithToolSearchPath(command.environment),
+                timeout: command.timeout
             )
         } catch let error as ToolLocatorError {
             switch error {
@@ -342,6 +453,147 @@ struct LiveColimaCLI: ColimaCLI {
         } catch {
             throw ColimaCLIError.processFailure(underlying: EnvironmentRedactor.redacted(error.localizedDescription))
         }
+    }
+
+    /// Run a colima command via the streaming runner, forwarding chunks and a terminal
+    /// result. Validation errors finish the stream immediately.
+    private func streamRun(_ command: ColimaCommand, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                let request: ProcessRequest
+                do {
+                    request = try self.processRequest(for: command)
+                } catch {
+                    continuation.finish(throwing: error)
+                    return
+                }
+                do {
+                    for try await event in self.streamingRunner.run(request, cancellation: cancellation) {
+                        continuation.yield(event)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    // MARK: Streaming lifecycle commands
+
+    func streamStart(_ configuration: ProfileConfiguration, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                let validationErrors = await configuration.validationErrorsCheckingFilesystem(fileManager: self.fileManager)
+                guard validationErrors.isEmpty else {
+                    continuation.finish(throwing: ColimaCLIError.unexpectedOutput(
+                        command: "profile validation",
+                        details: validationErrors.joined(separator: "\n"),
+                        rawOutput: ""
+                    ))
+                    return
+                }
+                do {
+                    let request = try self.processRequest(for: .start(self.makeStartRequest(from: configuration)))
+                    for try await event in self.streamingRunner.run(request, cancellation: cancellation) {
+                        continuation.yield(event)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    func streamStop(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        streamValidatedProfile(profile, command: { .stop(ColimaStopRequest(profileName: $0, force: false)) }, cancellation: cancellation)
+    }
+
+    func streamRestart(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        streamValidatedProfile(profile, command: { .restart(ColimaRestartRequest(profileName: $0, force: false)) }, cancellation: cancellation)
+    }
+
+    func streamDelete(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        streamValidatedProfile(profile, command: { .delete(ColimaDeleteRequest(profileName: $0, force: true)) }, cancellation: cancellation)
+    }
+
+    func streamKubernetes(profile: String, enabled: Bool, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        streamValidatedProfile(profile, command: { name in
+            let action: ColimaKubernetesAction = enabled ? .start : .stop
+            return .kubernetes(ColimaKubernetesRequest(profileName: name, action: action))
+        }, cancellation: cancellation)
+    }
+
+    func streamUpdate(profile: String, cancellation: ProcessCancellation?) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        streamValidatedProfile(profile, command: { .update(profile: $0) }, cancellation: cancellation)
+    }
+
+    private func streamValidatedProfile(
+        _ profile: String,
+        command: @escaping (String) -> ColimaCommand,
+        cancellation: ProcessCancellation?
+    ) -> AsyncThrowingStream<StreamingProcessEvent, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    try self.validateProfileName(profile)
+                    let request = try self.processRequest(for: command(profile))
+                    for try await event in self.streamingRunner.run(request, cancellation: cancellation) {
+                        continuation.yield(event)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Build a `ColimaStartRequest` from a `ProfileConfiguration`, mirroring the buffered
+    /// `start(_:)` argument construction.
+    private func makeStartRequest(from configuration: ProfileConfiguration) -> ColimaStartRequest {
+        var additionalArguments = configuration.additionalArgs
+        additionalArguments += ["--port-forwarder", configuration.portForwarder.rawValue]
+        if configuration.network.mode != "shared" {
+            additionalArguments += ["--network-mode", configuration.network.mode]
+        }
+        if !configuration.network.interface.isEmpty {
+            additionalArguments += ["--network-interface", configuration.network.interface]
+        }
+        if configuration.rosetta {
+            additionalArguments.append("--vz-rosetta")
+        }
+        if configuration.nestedVirtualization {
+            additionalArguments.append("--nested-virtualization")
+        }
+        for k3sArg in configuration.k3sArgs where !k3sArg.isEmpty {
+            additionalArguments += ["--k3s-arg", k3sArg]
+        }
+        if let listenPort = configuration.k3sListenPort {
+            additionalArguments += ["--k3s-listen-port", String(listenPort)]
+        }
+        return ColimaStartRequest(
+            profileName: configuration.name,
+            runtime: configuration.runtime,
+            vmType: configuration.vmType,
+            architecture: configuration.architecture,
+            resources: configuration.resources,
+            mountType: configuration.mountType,
+            mounts: configuration.mounts.map {
+                ColimaMount(location: $0.localPath, mountPoint: $0.vmPath.isEmpty ? nil : $0.vmPath, writable: $0.writable, cliValue: $0.commandValue)
+            },
+            dnsServers: configuration.network.dnsResolvers,
+            environmentVariables: [:],
+            enableKubernetes: configuration.kubernetes.enabled,
+            kubernetesVersion: configuration.kubernetes.version.isEmpty ? nil : configuration.kubernetes.version,
+            enableNetworkAddress: configuration.network.networkAddress,
+            preferNetworkAddressRoute: nil,
+            foreground: false,
+            editConfiguration: false,
+            editor: nil,
+            additionalArguments: additionalArguments
+        )
     }
 
     private func requireSuccess(_ entry: ColimaCommandLogEntry) throws {
