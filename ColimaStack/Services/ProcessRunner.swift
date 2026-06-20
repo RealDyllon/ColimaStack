@@ -343,7 +343,7 @@ nonisolated struct LiveProcessRunner: CancellableProcessRunner {
     }
 }
 
-nonisolated private final class ProcessOutputBuffer: @unchecked Sendable {
+nonisolated final class ProcessOutputBuffer: @unchecked Sendable {
     struct Snapshot {
         var data: Data
         var truncated: Bool

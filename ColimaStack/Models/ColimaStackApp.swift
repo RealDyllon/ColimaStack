@@ -10,6 +10,7 @@ import SwiftUI
 struct ColimaStackApp: App {
     @NSApplicationDelegateAdaptor(MockLaunchWindowDelegate.self) private var mockLaunchWindowDelegate
     @StateObject private var appState = Self.makeAppState()
+    @StateObject private var eventEngine = RuntimeEventEngine()
     private let usesMockData = ProcessInfo.processInfo.arguments.contains("--mock-data")
     private let usesMarketingScreenshots = ProcessInfo.processInfo.arguments.contains("--marketing-screenshots")
 
@@ -17,11 +18,12 @@ struct ColimaStackApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                .environmentObject(eventEngine)
                 .task {
                     await appState.launch()
-                    if !usesMockData {
-                        await appState.runAutoRefreshLoop()
-                    }
+                    configureEventEngine()
+                    eventEngine.start(appState: appState)
+                    await appState.runToolCheckTimer()
                 }
         }
         .defaultSize(width: usesMarketingScreenshots ? 1280 : 1000, height: usesMarketingScreenshots ? 860 : 700)
@@ -66,6 +68,22 @@ struct ColimaStackApp: App {
             return state
         }
         return .live()
+    }
+
+    /// Wire the real event source factories into the engine. The factories return `nil`
+    /// when a source isn't applicable (e.g. docker source for a containerd profile), and
+    /// the engine skips starting that source.
+    private func configureEventEngine() {
+        guard !usesMockData else { return }
+        eventEngine.dockerSourceFactory = { profile, status in
+            DockerEventSource(profile: profile, status: status)
+        }
+        eventEngine.kubernetesSourceFactory = { profile, status in
+            KubernetesWatchSource(profile: profile, status: status)
+        }
+        eventEngine.colimaSourceFactory = { profile in
+            ColimaFileWatcherSource(profile: profile, colima: appState.colimaForEvents)
+        }
     }
 
     private static func openMainWindow() {

@@ -78,9 +78,20 @@ struct MainWindowView: View {
 
             ToolbarItem {
                 if let activeOperation = appState.activeOperation {
-                    Label(activeOperation, systemImage: "bolt.horizontal.circle")
-                        .foregroundStyle(.secondary)
-                        .help(activeOperation)
+                    HStack(spacing: 6) {
+                        Label(activeOperation, systemImage: "bolt.horizontal.circle")
+                            .foregroundStyle(.secondary)
+                            .help(activeOperation)
+                        Button {
+                            appState.cancelCurrentCommand()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Cancel the running command")
+                        .accessibilityIdentifier("toolbar.cancelCommand")
+                    }
                 }
             }
         }

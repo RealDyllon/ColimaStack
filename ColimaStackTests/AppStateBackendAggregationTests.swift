@@ -298,7 +298,7 @@ struct AppStateBackendAggregationTests {
         #expect(snapshot.docker == nil)
     }
 
-    fileprivate static func profile(named name: String, state: ProfileState) -> ColimaProfile {
+    static func profile(named name: String, state: ProfileState) -> ColimaProfile {
         ColimaProfile(
             name: name,
             state: state,
@@ -316,7 +316,7 @@ struct AppStateBackendAggregationTests {
         )
     }
 
-    fileprivate static func detail(profile: String, state: ProfileState) -> ColimaStatusDetail {
+    static func detail(profile: String, state: ProfileState) -> ColimaStatusDetail {
         ColimaStatusDetail(
             profileName: profile,
             state: state,
