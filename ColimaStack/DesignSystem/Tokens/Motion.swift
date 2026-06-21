@@ -95,16 +95,21 @@ private struct ReduceMotionObserver: ViewModifier {
 
     /// Read the system "Reduce motion" preference.
     ///
-    /// `NSWorkspace.shared.accessibilityDisplayOptions.shouldReduceMotion`
-    /// is the canonical accessor; the implementation reads it via
-    /// `NSObject.perform` so it works across SDK revisions and falls
-    /// back to the well-known UserDefaults key when the property is
-    /// unavailable in the current SDK.
+    /// `NSWorkspace.shared.accessibilityDisplayOptions` is a private
+    /// KVC-backed dictionary. The legacy `value(forKey:)` accessor raises
+    /// `NSUnknownKeyException` on signed/sealed builds because the
+    /// dictionary doesn't expose `shouldReduceMotion` as a KVC key.
+    /// We use `perform(_:)` (which never throws on bad keys) and
+    /// `dict.object(forKey:)` (which returns nil rather than raising)
+    /// to read it safely, and fall back to the well-known UserDefaults
+    /// key that System Settings writes to.
     private static func readReduceMotion() -> Bool {
-        if let value = NSWorkspace.shared.value(forKey: "accessibilityDisplayOptions") as? NSObject,
-           value.responds(to: NSSelectorFromString("shouldReduceMotion")),
-           let flag = value.value(forKey: "shouldReduceMotion") as? Bool {
-            return flag
+        let workspace = NSWorkspace.shared
+        let selector = NSSelectorFromString("accessibilityDisplayOptions")
+        if workspace.responds(to: selector),
+           let dict = workspace.perform(selector)?.takeUnretainedValue() as? NSDictionary,
+           let flag = dict.object(forKey: "shouldReduceMotion") as? NSNumber {
+            return flag.boolValue
         }
         return UserDefaults.standard.bool(forKey: "com.apple.universalaccess reduceMotion")
     }
