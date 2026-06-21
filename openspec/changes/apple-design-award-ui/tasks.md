@@ -141,15 +141,15 @@
 
 ## 10. Motion and feedback
 
-- [ ] 10.1 Replace every `withAnimation(.easeInOut(duration: …))` in view code with token-driven `Motion.*` animations
-- [ ] 10.2 Implement the hover-state highlight modifier (1% black in light, 5% white in dark) on interactive rows, list items, table rows, sidebar rows, and command buttons
-- [ ] 10.3 Implement the focus ring modifier (2pt `accent/primary`) on focusable controls; thicker ring in Increase Contrast mode
-- [ ] 10.4 Implement the lifecycle-flash animation (success background tint 220ms in, 600ms out; failure critical tint) on profile and container rows
-- [ ] 10.5 Implement the inline `ProgressView` in the trailing cell of rows under operation
-- [ ] 10.6 Implement `ToastCenter` (SwiftUI overlay at top-right of main window; max 3 toasts; 5s auto-dismiss; hover to pause)
-- [ ] 10.7 Wire toasts to lifecycle command results, with `Open Activity` / `View Log` actions for failures
-- [ ] 10.8 Implement VoiceOver announcement throttling (max 1 announcement per 3 seconds) for state-change announcements
-- [ ] 10.9 Add XCTest for reduce-motion override, toast stacking, and lifecycle flash
+- [x] 10.1 Replace every `withAnimation(.easeInOut(duration: …))` in view code with token-driven `Motion.*` animations
+- [x] 10.2 Implement the hover-state highlight modifier (1% black in light, 5% white in dark) on interactive rows, list items, table rows, sidebar rows, and command buttons
+- [x] 10.3 Implement the focus ring modifier (2pt `accent/primary`) on focusable controls; thicker ring in Increase Contrast mode
+- [x] 10.4 Implement the lifecycle-flash animation (success background tint 220ms in, 600ms out; failure critical tint) on profile and container rows
+- [x] 10.5 Implement the inline `ProgressView` in the trailing cell of rows under operation
+- [x] 10.6 Implement `ToastCenter` (SwiftUI overlay at top-right of main window; max 3 toasts; 5s auto-dismiss; hover to pause)
+- [x] 10.7 Wire toasts to lifecycle command results, with `Open Activity` / `View Log` actions for failures
+- [x] 10.8 Implement VoiceOver announcement throttling (max 1 announcement per 3 seconds) for state-change announcements
+- [x] 10.9 Add XCTest for reduce-motion override, toast stacking, and lifecycle flash
 
 ## 11. Accessibility
 
