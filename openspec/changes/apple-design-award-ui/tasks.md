@@ -63,18 +63,18 @@
 
 ## 4. Profile editor
 
-- [ ] 4.1 Implement `EditorSheet` SwiftUI wrapper with `.presentationDetents([.large])`, `.presentationDragIndicator(.visible)`, `.presentationBackground(.regularMaterial)`, 720×760 frame, sticky header
-- [ ] 4.2 Rewrite `ProfileEditorView` body as a `ScrollView { VStack { SectionCard { ... } } }` with cards: Profile, Resources, Kubernetes, Network, Mounts, Advanced
-- [ ] 4.3 Replace `Form`-style `Picker`/`Toggle` controls with custom label-left / control-right rows in a `Grid`
-- [ ] 4.4 Replace `Stepper` for CPU/Memory/Disk with `Slider` + live value label
-- [ ] 4.5 Replace network Mode `Picker` with `.segmented` style; ensure Interface `TextField` is disabled when Mode is "Shared"
-- [ ] 4.6 Replace Mounts row with inline editable list (Local Path / VM Path / Writable / Remove) and a footer "Add Mount" button
-- [ ] 4.7 Replace K3s Args and DNS Resolvers with inline editable list components
-- [ ] 4.8 Implement sticky validation footer with one-line summary and popover listing errors; disable Apply when errors exist or an active operation is running
-- [ ] 4.9 Implement destructive-recreation confirm dialog when changing runtime, vmType, or diskGiB on an existing profile
-- [ ] 4.10 Implement keyboard navigation: Name auto-focus on open, Tab order, Return moves to next control, ⌘. cancels, "Revert to defaults" overflow menu
-- [ ] 4.11 Add XCTest for keyboard navigation, validation footer state, and the destructive confirm dialog
-- [ ] 4.12 Add snapshot test for the open editor in both light and dark mode
+- [x] 4.1 Implement `EditorSheet` SwiftUI wrapper with `.presentationDetents([.large])`, `.presentationDragIndicator(.visible)`, `.presentationBackground(.regularMaterial)`, 720×760 frame, sticky header
+- [x] 4.2 Rewrite `ProfileEditorView` body as a `ScrollView { VStack { SectionCard { ... } } }` with cards: Profile, Resources, Kubernetes, Network, Mounts, Advanced
+- [x] 4.3 Replace `Form`-style `Picker`/`Toggle` controls with custom label-left / control-right rows in a `Grid`
+- [x] 4.4 Replace `Stepper` for CPU/Memory/Disk with `Slider` + live value label
+- [x] 4.5 Replace network Mode `Picker` with `.segmented` style; ensure Interface `TextField` is disabled when Mode is "Shared"
+- [x] 4.6 Replace Mounts row with inline editable list (Local Path / VM Path / Writable / Remove) and a footer "Add Mount" button
+- [x] 4.7 Replace K3s Args and DNS Resolvers with inline editable list components
+- [x] 4.8 Implement sticky validation footer with one-line summary and popover listing errors; disable Apply when errors exist or an active operation is running
+- [x] 4.9 Implement destructive-recreation confirm dialog when changing runtime, vmType, or diskGiB on an existing profile
+- [x] 4.10 Implement keyboard navigation: Name auto-focus on open, Tab order, Return moves to next control, ⌘. cancels, "Revert to defaults" overflow menu
+- [x] 4.11 Add XCTest for keyboard navigation, validation footer state, and the destructive confirm dialog
+- [x] 4.12 Add snapshot test for the open editor in both light and dark mode
 
 ## 5. Settings window
 

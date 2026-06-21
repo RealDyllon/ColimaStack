@@ -29,6 +29,11 @@ enum AutoRefreshFrequency: String, CaseIterable, Identifiable {
 enum ProfileEditorMode: Equatable {
     case create
     case edit(profileID: ColimaProfile.ID)
+
+    var isEdit: Bool {
+        if case .edit = self { return true }
+        return false
+    }
 }
 
 @MainActor
@@ -58,6 +63,10 @@ final class AppState: ObservableObject {
     @Published var isShowingProfileEditor = false
     @Published var profileEditorMode: ProfileEditorMode?
     @Published var editingConfiguration: ProfileConfiguration = .default
+    /// The configuration as it was when the editor opened. Used to
+    /// detect destructive field changes (runtime, vmType, diskGiB)
+    /// that require a recreate confirmation.
+    @Published var originalEditingConfiguration: ProfileConfiguration?
     @Published var autoRefresh = true {
         didSet { userDefaults?.set(autoRefresh, forKey: DefaultsKey.autoRefresh) }
     }
@@ -408,11 +417,22 @@ final class AppState: ObservableObject {
         profileEditorTask?.cancel()
         profileEditorTask = Task { [weak self] in
             guard let self else { return }
-            editingConfiguration = await configuration(for: profile)
+            let configuration = await configuration(for: profile)
             guard !Task.isCancelled, selectedProfileID == profile.id else { return }
+            originalEditingConfiguration = configuration
+            editingConfiguration = configuration
             profileEditorMode = .edit(profileID: profile.id)
             isShowingProfileEditor = true
         }
+    }
+
+    /// True if the current edit changed a field that requires the
+    /// profile to be recreated (runtime, vmType, diskGiB).
+    var hasDestructiveFieldChange: Bool {
+        guard let original = originalEditingConfiguration else { return false }
+        return original.runtime != editingConfiguration.runtime
+            || original.vmType != editingConfiguration.vmType
+            || original.resources.diskGiB != editingConfiguration.resources.diskGiB
     }
 
     func cancelProfileEditing() {
