@@ -29,6 +29,11 @@ enum AutoRefreshFrequency: String, CaseIterable, Identifiable {
 enum ProfileEditorMode: Equatable {
     case create
     case edit(profileID: ColimaProfile.ID)
+
+    var isEdit: Bool {
+        if case .edit = self { return true }
+        return false
+    }
 }
 
 @MainActor
@@ -58,6 +63,10 @@ final class AppState: ObservableObject {
     @Published var isShowingProfileEditor = false
     @Published var profileEditorMode: ProfileEditorMode?
     @Published var editingConfiguration: ProfileConfiguration = .default
+    /// The configuration as it was when the editor opened. Used to
+    /// detect destructive field changes (runtime, vmType, diskGiB)
+    /// that require a recreate confirmation.
+    @Published var originalEditingConfiguration: ProfileConfiguration?
     @Published var autoRefresh = true {
         didSet { userDefaults?.set(autoRefresh, forKey: DefaultsKey.autoRefresh) }
     }
@@ -72,6 +81,13 @@ final class AppState: ObservableObject {
     }
     @Published var connectionStatus = RuntimeConnectionStatus()
     @Published var hasCompletedDiagnostics = false
+    @Published var defaultTableDensity: TableDensity = .standard {
+        didSet {
+            guard oldValue != defaultTableDensity else { return }
+            userDefaults?.set(defaultTableDensity.rawValue, forKey: DefaultsKey.tableDensity)
+        }
+    }
+    @Published var tableColumnCustomization: TableColumnCustomization = .init()
 
     private let colima: ColimaControlling
     private let backend: BackendSnapshotProviding?
@@ -86,6 +102,9 @@ final class AppState: ObservableObject {
     private var currentCommandTask: Task<Void, Never>?
     private var currentCommandCancellation: ProcessCancellation?
     private var toolCheckTask: Task<Void, Never>?
+    /// Container lifecycle service. Owned by `AppState` so the
+    /// notification subscribers outlive the per-screen views.
+    public var containerService: ContainerService!
 
     init(
         colima: ColimaControlling,
@@ -101,6 +120,7 @@ final class AppState: ObservableObject {
         self.searchIndexer = searchIndexer ?? BackendSearchIndexer()
         self.userDefaults = userDefaults
         self.profiles = profiles
+        self.containerService = nil
         if let rawSection = userDefaults?.string(forKey: DefaultsKey.selectedSection),
            let section = WorkspaceRoute(rawValue: rawSection) {
             self.selectedSection = section
@@ -118,9 +138,16 @@ final class AppState: ObservableObject {
         if userDefaults?.object(forKey: DefaultsKey.useEventBus) != nil {
             self.useEventBus = userDefaults?.bool(forKey: DefaultsKey.useEventBus) ?? true
         }
+        if let rawDensity = userDefaults?.string(forKey: DefaultsKey.tableDensity),
+           let density = TableDensity(rawValue: rawDensity) {
+            self.defaultTableDensity = density
+        }
         let persistedProfileID = userDefaults?.string(forKey: DefaultsKey.selectedProfileID)
         self.selectedProfileID = persistedProfileID.flatMap { id in profiles.contains(where: { $0.id == id }) ? id : nil } ?? profiles.first?.id
         rebuildSearchIndex()
+        // Now that all stored properties are initialized, swap the
+        // placeholder for a fully-wired ContainerService.
+        self.containerService = ContainerService(appState: self)
     }
 
     static func live() -> AppState {
@@ -366,60 +393,62 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: - Container lifecycle (thin wrappers over ContainerService)
+
+    /// Convenience wrapper for `ContainersScreen` from main (pre-group-3
+    /// integration). Forwards to `ContainerService.start(containerID:)`.
     func startContainer(_ container: DockerContainerResource) async {
-        await runDockerContainerCommand("Start container \(container.displayName)") {
-            try await dockerContainerController.start(containerID: container.id, context: selectedDockerContext)
-        }
+        await containerService.start(containerID: container.id)
     }
 
     func stopContainer(_ container: DockerContainerResource) async {
-        await runDockerContainerCommand("Stop container \(container.displayName)") {
-            try await dockerContainerController.stop(containerID: container.id, context: selectedDockerContext)
-        }
+        await containerService.stop(containerID: container.id)
     }
 
     func restartContainer(_ container: DockerContainerResource) async {
-        await runDockerContainerCommand("Restart container \(container.displayName)") {
-            try await dockerContainerController.restart(containerID: container.id, context: selectedDockerContext)
-        }
+        await containerService.restart(containerID: container.id)
     }
 
     func pauseContainer(_ container: DockerContainerResource) async {
-        await runDockerContainerCommand("Pause container \(container.displayName)") {
-            try await dockerContainerController.pause(containerID: container.id, context: selectedDockerContext)
-        }
+        await containerService.pause(containerID: container.id)
     }
 
     func resumeContainer(_ container: DockerContainerResource) async {
-        await runDockerContainerCommand("Resume container \(container.displayName)") {
-            try await dockerContainerController.resume(containerID: container.id, context: selectedDockerContext)
-        }
+        await containerService.resume(containerID: container.id)
     }
 
     func killContainer(_ container: DockerContainerResource) async {
-        await runDockerContainerCommand("Kill container \(container.displayName)") {
-            try await dockerContainerController.kill(containerID: container.id, context: selectedDockerContext)
-        }
+        await containerService.kill(containerID: container.id)
     }
 
+    /// Legacy alias used by the old `ContainerDeleteConfirmationSheet`.
+    /// `removeContainer` deletes with `--force` to match the previous
+    /// behaviour of running `docker rm -f`.
     func removeContainer(_ container: DockerContainerResource) async {
-        await runDockerContainerCommand("Delete container \(container.displayName)") {
-            try await dockerContainerController.remove(containerID: container.id, context: selectedDockerContext)
-        }
+        await containerService.delete(containerID: container.id, force: true)
     }
 
+    /// Stream the latest log capture for the supplied container.
+    /// Returns the captured log text (capped to a sensible buffer
+    /// length to avoid runaway memory use).
     func containerLogs(_ container: DockerContainerResource, timestamps: Bool, tail: Int) async throws -> String {
-        let output = try await dockerContainerController.logs(containerID: container.id, context: selectedDockerContext, timestamps: timestamps, tail: tail)
-        return cappedLog(output)
+        let buffer = LogStreamBuffer()
+        containerService.logs(containerID: container.id, into: buffer)
+        return buffer.renderPlainText()
     }
 
+    /// Return the JSON inspect output for the supplied container.
     func inspectContainer(_ container: DockerContainerResource) async throws -> String {
-        let output = try await dockerContainerController.inspect(containerID: container.id, context: selectedDockerContext)
-        return cappedLog(output)
+        if let text = await containerService.inspect(containerID: container.id) {
+            return text
+        }
+        return "{}"
     }
 
+    /// Build a `docker exec` command for opening a terminal inside a
+    /// running container. Surfaced to the menubar / context menu.
     func terminalCommand(for container: DockerContainerResource, shell: String = "/bin/sh") -> String {
-        dockerContainerController.terminalCommand(containerID: container.id, context: selectedDockerContext, shell: shell)
+        "docker exec -it \(container.id) \(shell)"
     }
 
     func setKubernetes(enabled: Bool) async {
@@ -456,11 +485,22 @@ final class AppState: ObservableObject {
         profileEditorTask?.cancel()
         profileEditorTask = Task { [weak self] in
             guard let self else { return }
-            editingConfiguration = await configuration(for: profile)
+            let configuration = await configuration(for: profile)
             guard !Task.isCancelled, selectedProfileID == profile.id else { return }
+            originalEditingConfiguration = configuration
+            editingConfiguration = configuration
             profileEditorMode = .edit(profileID: profile.id)
             isShowingProfileEditor = true
         }
+    }
+
+    /// True if the current edit changed a field that requires the
+    /// profile to be recreated (runtime, vmType, diskGiB).
+    var hasDestructiveFieldChange: Bool {
+        guard let original = originalEditingConfiguration else { return false }
+        return original.runtime != editingConfiguration.runtime
+            || original.vmType != editingConfiguration.vmType
+            || original.resources.diskGiB != editingConfiguration.resources.diskGiB
     }
 
     func cancelProfileEditing() {
@@ -972,6 +1012,7 @@ private enum DefaultsKey {
     static let autoRefreshFrequency = "autoRefreshFrequency"
     static let useStreamingCommandOutput = "useStreamingCommandOutput"
     static let useEventBus = "useEventBus"
+    static let tableDensity = "tableDensity"
 }
 
 struct AppError: Identifiable, Equatable {

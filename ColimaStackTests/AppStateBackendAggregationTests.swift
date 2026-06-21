@@ -411,7 +411,7 @@ struct AppStateBackendAggregationTests {
         #expect(snapshot.issues.contains { $0.source == .kubernetes && $0.title == "Unable to load Kubernetes resources" })
     }
 
-    fileprivate static func profile(named name: String, state: ProfileState) -> ColimaProfile {
+    static func profile(named name: String, state: ProfileState) -> ColimaProfile {
         ColimaProfile(
             name: name,
             state: state,

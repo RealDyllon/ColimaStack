@@ -126,7 +126,7 @@ struct OverviewScreen: View {
             subtitle: "Current profile, runtime health, and recent operations.",
             symbol: WorkspaceRoute.overview.symbol,
             accessory: {
-                HStack(spacing: 10) {
+                HStack(spacing: DesignSystem.Spacing.sm.rawValue) {
                     Button("Refresh") {
                         Task { await appState.refreshAll() }
                     }
@@ -140,29 +140,26 @@ struct OverviewScreen: View {
             }
         ) {
             if !appState.hasCollectedDiagnostics || (appState.isRefreshing && appState.profiles.isEmpty) {
-                SurfaceStateView(
+                EmptyStateView(
+                    kind: .loading,
                     title: "Loading Colima environment",
-                    message: "Running startup diagnostics, locating profiles, and capturing the current runtime state.",
-                    symbol: "progress.indicator",
-                    tone: .info
+                    message: "Running startup diagnostics, locating profiles, and capturing the current runtime state."
                 )
             } else if !appState.hasColima {
-                SurfaceStateView(
+                EmptyStateView(
+                    kind: .unavailable,
                     title: "Colima dependency required",
-                    message: "Install or expose the `colima` CLI on PATH, then refresh diagnostics to populate the workspace.",
-                    symbol: "externaldrive.badge.xmark",
-                    tone: .warning
+                    message: "Install or expose the `colima` CLI on PATH, then refresh diagnostics to populate the workspace."
                 ) {
                     Button("Refresh") {
                         Task { await appState.refreshAll() }
                     }
                 }
             } else if appState.profiles.isEmpty {
-                SurfaceStateView(
+                EmptyStateView(
+                    kind: .noData,
                     title: "No profiles configured",
-                    message: "Create a profile to define runtime, resources, mounts, networking, and Kubernetes options for this machine.",
-                    symbol: "rectangle.stack.badge.plus",
-                    tone: .info
+                    message: "Create a profile to define runtime, resources, mounts, networking, and Kubernetes options for this machine."
                 ) {
                     Button("Create Profile") {
                         appState.createProfile()
@@ -194,7 +191,7 @@ struct OverviewScreen: View {
                     )
                 }
 
-                LazyVGrid(columns: columns, spacing: 12) {
+                LazyVGrid(columns: columns, spacing: DesignSystem.Spacing.md.rawValue) {
                     MetricTile(title: "Profile", value: selectedProfile?.name ?? "Unavailable", icon: "rectangle.stack")
                     MetricTile(title: "State", value: selectedProfile?.state.label ?? "Unknown", icon: "power", tone: tone(for: selectedProfile?.state ?? .unknown))
                     MetricTile(title: "Runtime", value: selectedProfile?.runtime?.label ?? "Unknown", icon: "server.rack")
@@ -230,8 +227,7 @@ struct OverviewScreen: View {
                             ToolRow(tool: tool)
                         }
                         if appState.diagnostics.tools.isEmpty {
-                            Text("No diagnostics captured yet.")
-                                .foregroundStyle(.secondary)
+                            EmptyStateView(kind: .noData, title: "No diagnostics captured yet", message: "Run the dependency check to populate this list.", symbol: "stethoscope")
                         }
                     }
                 }
@@ -243,8 +239,7 @@ struct OverviewScreen: View {
                 ) {
                     let entries = filteredCommands.prefix(4)
                     if entries.isEmpty {
-                        Text("No matching command history yet.")
-                            .foregroundStyle(.secondary)
+                        EmptyStateView(kind: .noData, title: "No matching command history yet", message: "Lifecycle actions and profile mutations will appear here with terminal output.", symbol: "terminal")
                     } else {
                         VStack(spacing: 0) {
                             ForEach(Array(entries)) { entry in
@@ -293,6 +288,10 @@ struct OverviewScreen: View {
 
 struct ContainersScreen: View {
     @EnvironmentObject private var appState: AppState
+    @State private var selection: Set<DockerContainerResource.ID> = []
+    @State private var sortOrder: [KeyPathComparator<DockerContainerResource>] = [
+        .init(\.name, order: .forward)
+    ]
     let searchText: String
 
     @State private var selectedContainerID: DockerContainerResource.ID?
@@ -314,18 +313,9 @@ struct ContainersScreen: View {
     }
 
     private var containers: [DockerContainerResource] {
-        allContainers.filter {
-            filter.includes($0) && matchesSearch(searchText, values: [
-                $0.name,
-                $0.id,
-                $0.image,
-                $0.state,
-                $0.status,
-                $0.ports,
-                $0.composeProject ?? "",
-                $0.composeService ?? ""
-            ] + Array($0.labels.keys) + Array($0.labels.values))
-        }.sorted { ($0.name.isEmpty ? $0.id : $0.name).localizedCaseInsensitiveCompare($1.name.isEmpty ? $1.id : $1.name) == .orderedAscending }
+        (appState.backendSnapshot?.docker?.containers ?? []).filter {
+            matchesSearch(searchText, values: [$0.name, $0.image, $0.state, $0.status, $0.ports])
+        }.sorted(using: sortOrder)
     }
 
     private var containerActionsAreBusy: Bool {
@@ -444,14 +434,7 @@ struct ContainersScreen: View {
                             tone: .neutral
                         )
                     } else {
-                        ContainerControlTable(
-                            containers: containers,
-                            selectedID: selectedContainer?.id,
-                            stats: appState.backendSnapshot?.docker?.stats ?? [],
-                            isBusy: containerActionsAreBusy,
-                            onSelect: selectContainer,
-                            onAction: handleAction
-                        )
+                        containerTable
                     }
                 }
                 .frame(minWidth: 620)
@@ -591,6 +574,157 @@ struct ContainersScreen: View {
         }
     }
 
+    private var containerTable: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TableContextualActionBar(
+                count: selection.count,
+                primaryLabel: nil,
+                onDismiss: { selection.removeAll() }
+            ) { _ in
+                AnyView(
+                    HStack(spacing: 8) {
+                        Button {
+                            Task { await appState.refreshAll() }
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        Button("Start", systemImage: "play.fill") {
+                            NotificationCenter.default.post(name: .containerLifecycleStart, object: selection)
+                        }
+                        .disabled(!canStart)
+                        Button("Stop", systemImage: "stop.fill") {
+                            NotificationCenter.default.post(name: .containerLifecycleStop, object: selection)
+                        }
+                        .disabled(!canStop)
+                        Button("Restart", systemImage: "arrow.triangle.2.circlepath") {
+                            NotificationCenter.default.post(name: .containerLifecycleRestart, object: selection)
+                        }
+                        .disabled(!canStart)
+                        Button("Delete", role: .destructive) {
+                            NotificationCenter.default.post(name: .containerLifecycleDelete, object: selection)
+                        }
+                    }
+                )
+            }
+
+            Table(of: DockerContainerResource.self, selection: $selection, sortOrder: $sortOrder) {
+                TableColumn("Name", value: \.name) { container in
+                    Text(container.name.isEmpty ? container.id : container.name)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .width(min: 120, ideal: 180)
+
+                TableColumn("Image", value: \.image) { container in
+                    Text(container.image)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .width(min: 120, ideal: 220)
+
+                TableColumn("State", value: \.state) { container in
+                    TableStateCell(
+                        text: container.state,
+                        tone: container.health == .healthy ? .success : container.health == .warning ? .warning : .neutral
+                    )
+                }
+                .width(min: 80, ideal: 100)
+
+                TableColumn("Status", value: \.status) { container in
+                    Text(container.status.isEmpty ? "—" : container.status)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .width(min: 80, ideal: 140)
+
+                TableColumn("Ports", value: \.ports) { container in
+                    Text(container.ports.isEmpty ? "No exposed ports" : container.ports)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .width(min: 80, ideal: 160)
+
+                TableColumn("Created", value: \.createdAt) { container in
+                    Text(container.createdAt)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .width(min: 80, ideal: 100)
+            } rows: {
+                ForEach(containers) { container in
+                    TableRow(container)
+                        .contextMenu {
+                            containerContextMenu(for: container)
+                        }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func containerContextMenu(for container: DockerContainerResource) -> some View {
+        Button("Start", systemImage: "play.fill") {
+            NotificationCenter.default.post(name: .containerLifecycleStart, object: Set([container.id]))
+        }
+        .disabled(container.state.lowercased() == "running")
+
+        Button("Stop", systemImage: "stop.fill") {
+            NotificationCenter.default.post(name: .containerLifecycleStop, object: Set([container.id]))
+        }
+        .disabled(container.state.lowercased() != "running")
+
+        Button("Restart", systemImage: "arrow.triangle.2.circlepath") {
+            NotificationCenter.default.post(name: .containerLifecycleRestart, object: Set([container.id]))
+        }
+        .disabled(container.state.lowercased() != "running")
+
+        Divider()
+        Button("Copy ID", systemImage: "doc.on.doc") {
+            tableRowCopyToPasteboard([container.id])
+        }
+        Button("Copy Image", systemImage: "doc.on.doc") {
+            tableRowCopyToPasteboard([container.image])
+        }
+        if !container.ports.isEmpty {
+            Button("Copy Ports", systemImage: "doc.on.doc") {
+                tableRowCopyToPasteboard([container.ports])
+            }
+        }
+
+        if let url = firstBrowserURL(container) {
+            Divider()
+            Button("Open in Browser", systemImage: "safari") {
+                NSWorkspace.shared.open(url)
+            }
+        }
+
+        Divider()
+        Button("Inspect", systemImage: "doc.text.magnifyingglass") {
+            NotificationCenter.default.post(name: .containerInspect, object: container.id)
+        }
+        Button("Logs", systemImage: "terminal") {
+            NotificationCenter.default.post(name: .containerLogs, object: container.id)
+        }
+
+        Divider()
+        Button("Delete", role: .destructive) {
+            NotificationCenter.default.post(name: .containerLifecycleDelete, object: Set([container.id]))
+        }
+    }
+
+    private var canStart: Bool {
+        !selection.isEmpty && containers.contains(where: { selection.contains($0.id) })
+    }
+    private var canStop: Bool {
+        let selected = containers.filter { selection.contains($0.id) }
+        return !selected.isEmpty && selected.contains(where: { $0.state.lowercased() == "running" })
+    }
+
+    private func firstBrowserURL(_ container: DockerContainerResource) -> URL? {
+        container.portBindings.compactMap { $0.browserURL }.first
+    }
+
     private var selectedProfile: ColimaProfile? { appState.selectedProfile }
     private var selectedDetail: ColimaStatusDetail? { appState.selectedProfileDetail ?? selectedProfile?.statusDetail }
     private var missingDependencyState: some View {
@@ -613,6 +747,15 @@ struct ContainersScreen: View {
             }
         }
     }
+}
+
+extension Notification.Name {
+    static let containerLifecycleStart = Notification.Name("containerLifecycleStart")
+    static let containerLifecycleStop = Notification.Name("containerLifecycleStop")
+    static let containerLifecycleRestart = Notification.Name("containerLifecycleRestart")
+    static let containerLifecycleDelete = Notification.Name("containerLifecycleDelete")
+    static let containerInspect = Notification.Name("containerInspect")
+    static let containerLogs = Notification.Name("containerLogs")
 }
 
 private enum ContainerStateFilter: String, CaseIterable, Identifiable {
@@ -1274,11 +1417,15 @@ private func prettyJSON(_ value: String) -> String {
 
 struct ImagesScreen: View {
     @EnvironmentObject private var appState: AppState
+    @State private var selection: Set<DockerImageResource.ID> = []
+    @State private var sortOrder: [KeyPathComparator<DockerImageResource>] = [
+        .init(\.repository, order: .forward)
+    ]
     let searchText: String
     private var images: [DockerImageResource] {
         (appState.backendSnapshot?.docker?.images ?? []).filter {
             matchesSearch(searchText, values: [$0.displayName, $0.id, $0.digest, $0.size])
-        }.sorted { ($0.displayName.isEmpty ? $0.id : $0.displayName).localizedCaseInsensitiveCompare($1.displayName.isEmpty ? $1.id : $1.displayName) == .orderedAscending }
+        }.sorted(using: sortOrder)
     }
 
     var body: some View {
@@ -1323,18 +1470,61 @@ struct ImagesScreen: View {
                             tone: .neutral
                         )
                     } else {
-                        RecordList(columns: ["Repository", "Tag", "Size", "Created"]) {
-                            ForEach(images) { image in
-                                RecordRow(
-                                    leading: image.repository.isEmpty ? image.id : image.repository,
-                                    secondary: image.id,
-                                    tertiary: image.size,
-                                    trailing: image.createdSince.isEmpty ? image.createdAt : image.createdSince
-                                )
-                            }
-                        }
+                        imageTable
                     }
                 }
+            }
+        }
+    }
+
+    private var imageTable: some View {
+        Table(of: DockerImageResource.self, selection: $selection, sortOrder: $sortOrder) {
+            TableColumn("Repository", value: \.repository) { image in
+                Text(image.repository.isEmpty ? image.id : image.repository)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 120, ideal: 200)
+
+            TableColumn("Tag", value: \.tag) { image in
+                Text(image.tag.isEmpty ? "—" : image.tag)
+                    .font(.system(.body, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 60, ideal: 100)
+
+            TableColumn("Image ID", value: \.id) { image in
+                TableMonocell(text: image.id)
+            }
+            .width(min: 100, ideal: 160)
+
+            TableColumn("Size", value: \.size) { image in
+                Text(image.size)
+                    .lineLimit(1)
+            }
+            .width(min: 60, ideal: 100)
+
+            TableColumn("Created", value: \.createdSince) { image in
+                Text(image.createdSince.isEmpty ? image.createdAt : image.createdSince)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 80, ideal: 120)
+        } rows: {
+            ForEach(images) { image in
+                TableRow(image)
+                    .contextMenu {
+                        Button("Copy ID", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([image.id])
+                        }
+                        Button("Copy Digest", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([image.digest])
+                        }
+                        Button("Copy Reference", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([image.displayName])
+                        }
+                    }
             }
         }
     }
@@ -1360,6 +1550,10 @@ struct ImagesScreen: View {
 
 struct VolumesScreen: View {
     @EnvironmentObject private var appState: AppState
+    @State private var volumeSelection: Set<DockerVolumeResource.ID> = []
+    @State private var volumeSortOrder: [KeyPathComparator<DockerVolumeResource>] = [
+        .init(\.name, order: .forward)
+    ]
     let searchText: String
 
     private var filteredMounts: [ColimaMount] {
@@ -1370,7 +1564,7 @@ struct VolumesScreen: View {
     private var volumes: [DockerVolumeResource] {
         (appState.backendSnapshot?.docker?.volumes ?? []).filter {
             matchesSearch(searchText, values: [$0.name, $0.driver, $0.scope, $0.mountpoint])
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        }.sorted(using: volumeSortOrder)
     }
 
     var body: some View {
@@ -1426,13 +1620,49 @@ struct VolumesScreen: View {
                         Text(searchText.isEmpty ? "No runtime volumes found." : "No runtime volumes match the current search.")
                             .foregroundStyle(.secondary)
                     } else {
-                        RecordList(columns: ["Name", "Driver", "Scope", "Mountpoint"]) {
-                            ForEach(volumes) { volume in
-                                RecordRow(leading: volume.name, secondary: volume.driver, tertiary: volume.scope, trailing: volume.mountpoint)
-                            }
-                        }
+                        volumeTable
                     }
                 }
+            }
+        }
+    }
+
+    private var volumeTable: some View {
+        Table(of: DockerVolumeResource.self, selection: $volumeSelection, sortOrder: $volumeSortOrder) {
+            TableColumn("Name", value: \.name) { volume in
+                Text(volume.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 120, ideal: 180)
+
+            TableColumn("Driver", value: \.driver) { volume in
+                Text(volume.driver)
+                    .lineLimit(1)
+            }
+            .width(min: 80, ideal: 120)
+
+            TableColumn("Scope", value: \.scope) { volume in
+                Text(volume.scope)
+                    .lineLimit(1)
+            }
+            .width(min: 80, ideal: 100)
+
+            TableColumn("Mountpoint", value: \.mountpoint) { volume in
+                TableMonocell(text: volume.mountpoint)
+            }
+            .width(min: 120, ideal: 280)
+        } rows: {
+            ForEach(volumes) { volume in
+                TableRow(volume)
+                    .contextMenu {
+                        Button("Copy Name", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([volume.name])
+                        }
+                        Button("Copy Mountpoint", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([volume.mountpoint])
+                        }
+                    }
             }
         }
     }
@@ -1458,11 +1688,15 @@ struct VolumesScreen: View {
 
 struct NetworksScreen: View {
     @EnvironmentObject private var appState: AppState
+    @State private var dockerNetworkSelection: Set<DockerNetworkResource.ID> = []
+    @State private var dockerNetworkSortOrder: [KeyPathComparator<DockerNetworkResource>] = [
+        .init(\.name, order: .forward)
+    ]
     let searchText: String
     private var dockerNetworks: [DockerNetworkResource] {
         (appState.backendSnapshot?.docker?.networks ?? []).filter {
             matchesSearch(searchText, values: [$0.name, $0.id, $0.driver, $0.scope])
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        }.sorted(using: dockerNetworkSortOrder)
     }
 
     private var networkRows: [(String, String, String, String)] {
@@ -1510,16 +1744,7 @@ struct NetworksScreen: View {
                         tone: .warning
                     )
                 } else {
-                    RecordList(columns: ["Name", "State", "Endpoint", "Context"]) {
-                        ForEach(Array(networkRows.enumerated()), id: \.offset) { index, row in
-                            RecordRow(leading: row.0, secondary: row.1, tertiary: row.2, trailing: row.3, tone: row.1 == "Unavailable" ? .critical : .neutral)
-                                .overlay(alignment: .bottom) {
-                                    if index == networkRows.count - 1 {
-                                        EmptyView()
-                                    }
-                                }
-                        }
-                    }
+                    profileEndpointTable
                 }
 
                 SectionCard(
@@ -1540,14 +1765,103 @@ struct NetworksScreen: View {
                         Text(searchText.isEmpty ? "No Docker networks found." : "No Docker networks match the current search.")
                             .foregroundStyle(.secondary)
                     } else {
-                        RecordList(columns: ["Name", "Driver", "Scope", "Flags"]) {
-                            ForEach(dockerNetworks) { network in
-                                let flags = [network.internalOnly ? "Internal" : "", network.ipv6Enabled ? "IPv6" : ""].filter { !$0.isEmpty }.joined(separator: ", ")
-                                RecordRow(leading: network.name, secondary: network.id, tertiary: network.driver, trailing: flags.isEmpty ? network.scope : flags)
-                            }
-                        }
+                        runtimeNetworkTable
                     }
                 }
+            }
+        }
+    }
+
+    private var profileEndpointTable: some View {
+        Table(of: NetworkEndpointRow.self) {
+            TableColumn("Name") { row in
+                Text(row.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 120, ideal: 180)
+
+            TableColumn("State") { row in
+                TableStateCell(
+                    text: row.state,
+                    tone: row.state == "Unavailable" ? .critical : .success
+                )
+            }
+            .width(min: 80, ideal: 100)
+
+            TableColumn("Endpoint") { row in
+                Text(row.endpoint)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 120, ideal: 200)
+
+            TableColumn("Context") { row in
+                Text(row.context)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 100, ideal: 160)
+        } rows: {
+            ForEach(networkRows.map(NetworkEndpointRow.init), id: \.name) { row in
+                TableRow(row)
+                    .contextMenu {
+                        Button("Copy Name", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([row.name])
+                        }
+                        Button("Copy Endpoint", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([row.endpoint])
+                        }
+                    }
+            }
+        }
+    }
+
+    private var runtimeNetworkTable: some View {
+        Table(of: DockerNetworkResource.self, selection: $dockerNetworkSelection, sortOrder: $dockerNetworkSortOrder) {
+            TableColumn("Name", value: \.name) { network in
+                Text(network.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 120, ideal: 200)
+
+            TableColumn("Driver", value: \.driver) { network in
+                Text(network.driver)
+                    .lineLimit(1)
+            }
+            .width(min: 80, ideal: 120)
+
+            TableColumn("Scope", value: \.scope) { network in
+                Text(network.scope)
+                    .lineLimit(1)
+            }
+            .width(min: 80, ideal: 100)
+
+            TableColumn("ID", value: \.id) { network in
+                TableMonocell(text: network.id)
+            }
+            .width(min: 100, ideal: 200)
+
+            TableColumn("Flags") { network in
+                let flags = [network.internalOnly ? "Internal" : nil, network.ipv6Enabled ? "IPv6" : nil]
+                    .compactMap { $0 }
+                    .joined(separator: ", ")
+                Text(flags.isEmpty ? "—" : flags)
+                    .lineLimit(1)
+            }
+            .width(min: 80, ideal: 100)
+        } rows: {
+            ForEach(dockerNetworks) { network in
+                TableRow(network)
+                    .contextMenu {
+                        Button("Copy Name", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([network.name])
+                        }
+                        Button("Copy ID", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([network.id])
+                        }
+                    }
             }
         }
     }
@@ -1638,8 +1952,7 @@ struct MonitorScreen: View {
                 ) {
                     let history = usageHistory
                     if history.isEmpty {
-                        Text("No usage history yet.")
-                            .foregroundStyle(.secondary)
+                        EmptyStateView(kind: .noData, title: "No usage history yet", message: "Refresh while a profile is running to start collecting samples.", symbol: "chart.xyaxis.line")
                     } else {
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 2), spacing: 14) {
                             RuntimeMetricChart(
@@ -1827,11 +2140,15 @@ private struct RuntimeTrafficChart: View {
 
 struct KubernetesClusterScreen: View {
     @EnvironmentObject private var appState: AppState
+    @State private var nodeSelection: Set<KubernetesNodeResource.ID> = []
+    @State private var nodeSortOrder: [KeyPathComparator<KubernetesNodeResource>] = [
+        .init(\.metadata.name, order: .forward)
+    ]
     let searchText: String
     private var nodes: [KubernetesNodeResource] {
         (appState.backendSnapshot?.kubernetes?.nodes ?? []).filter {
             matchesSearch(searchText, values: [$0.metadata.name, $0.internalIP, $0.kubeletVersion, $0.roles.joined(separator: " ")])
-        }.sorted { $0.metadata.name.localizedCaseInsensitiveCompare($1.metadata.name) == .orderedAscending }
+        }.sorted(using: nodeSortOrder)
     }
 
     var body: some View {
@@ -1885,17 +2202,7 @@ struct KubernetesClusterScreen: View {
                         Text(searchText.isEmpty ? "No nodes reported by kubectl." : "No nodes match the current search.")
                             .foregroundStyle(.secondary)
                     } else {
-                        RecordList(columns: ["Name", "Roles", "Version", "Ready"]) {
-                            ForEach(nodes) { node in
-                                RecordRow(
-                                    leading: node.metadata.name,
-                                    secondary: node.roles.isEmpty ? "worker" : node.roles.joined(separator: ", "),
-                                    tertiary: node.kubeletVersion,
-                                    trailing: node.conditions["Ready"] ?? "Unknown",
-                                    tone: node.health == .healthy ? .success : .warning
-                                )
-                            }
-                        }
+                        nodeTable
                     }
                 }
 
@@ -1916,6 +2223,58 @@ struct KubernetesClusterScreen: View {
                         .disabled(appState.activeOperation != nil)
                     }
                 }
+            }
+        }
+    }
+
+    private var nodeTable: some View {
+        Table(of: KubernetesNodeResource.self, selection: $nodeSelection, sortOrder: $nodeSortOrder) {
+            TableColumn("Name", value: \.metadata.name) { node in
+                Text(node.metadata.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 120, ideal: 200)
+
+            TableColumn("Roles") { node in
+                Text(node.roles.isEmpty ? "worker" : node.roles.joined(separator: ", "))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 80, ideal: 140)
+
+            TableColumn("Version", value: \.kubeletVersion) { node in
+                Text(node.kubeletVersion)
+                    .lineLimit(1)
+            }
+            .width(min: 80, ideal: 120)
+
+            TableColumn("Internal IP", value: \.internalIP) { node in
+                Text(node.internalIP)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 80, ideal: 140)
+
+            TableColumn("Ready") { node in
+                let ready = node.conditions["Ready"] ?? "Unknown"
+                TableStateCell(
+                    text: ready,
+                    tone: ready == "True" ? .success : ready == "False" ? .critical : .warning
+                )
+            }
+            .width(min: 60, ideal: 80)
+        } rows: {
+            ForEach(nodes) { node in
+                TableRow(node)
+                    .contextMenu {
+                        Button("Copy Name", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([node.metadata.name])
+                        }
+                        Button("Copy IP", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([node.internalIP])
+                        }
+                    }
             }
         }
     }
@@ -1941,16 +2300,24 @@ struct KubernetesClusterScreen: View {
 
 struct KubernetesWorkloadsScreen: View {
     @EnvironmentObject private var appState: AppState
+    @State private var podSelection: Set<KubernetesPodResource.ID> = []
+    @State private var podSortOrder: [KeyPathComparator<KubernetesPodResource>] = [
+        .init(\.metadata.name, order: .forward)
+    ]
+    @State private var deploymentSelection: Set<KubernetesDeploymentResource.ID> = []
+    @State private var deploymentSortOrder: [KeyPathComparator<KubernetesDeploymentResource>] = [
+        .init(\.metadata.name, order: .forward)
+    ]
     let searchText: String
     private var pods: [KubernetesPodResource] {
         (appState.backendSnapshot?.kubernetes?.pods ?? []).filter {
             matchesSearch(searchText, values: [$0.metadata.name, $0.metadata.namespace ?? "", $0.phase, $0.nodeName])
-        }.sorted { "\($0.metadata.namespace ?? "default")/\($0.metadata.name)".localizedCaseInsensitiveCompare("\($1.metadata.namespace ?? "default")/\($1.metadata.name)") == .orderedAscending }
+        }.sorted(using: podSortOrder)
     }
     private var deployments: [KubernetesDeploymentResource] {
         (appState.backendSnapshot?.kubernetes?.deployments ?? []).filter {
             matchesSearch(searchText, values: [$0.metadata.name, $0.metadata.namespace ?? ""])
-        }.sorted { "\($0.metadata.namespace ?? "default")/\($0.metadata.name)".localizedCaseInsensitiveCompare("\($1.metadata.namespace ?? "default")/\($1.metadata.name)") == .orderedAscending }
+        }.sorted(using: deploymentSortOrder)
     }
 
     var body: some View {
@@ -1972,17 +2339,7 @@ struct KubernetesWorkloadsScreen: View {
                         Text(searchText.isEmpty ? "No pods reported by kubectl." : "No pods match the current search.")
                             .foregroundStyle(.secondary)
                     } else {
-                        RecordList(columns: ["Name", "Namespace", "Node", "Phase"]) {
-                            ForEach(pods) { pod in
-                                RecordRow(
-                                    leading: pod.metadata.name,
-                                    secondary: pod.metadata.namespace ?? "default",
-                                    tertiary: pod.nodeName,
-                                    trailing: pod.phase,
-                                    tone: pod.health == .healthy ? .success : pod.health == .error ? .critical : .warning
-                                )
-                            }
-                        }
+                        podTable
                     }
                 }
                 SectionCard(title: "Deployments", subtitle: "Replica readiness by namespace.", symbol: "square.3.layers.3d") {
@@ -1990,19 +2347,94 @@ struct KubernetesWorkloadsScreen: View {
                         Text(searchText.isEmpty ? "No deployments reported by kubectl." : "No deployments match the current search.")
                             .foregroundStyle(.secondary)
                     } else {
-                        RecordList(columns: ["Name", "Namespace", "Ready", "Updated"]) {
-                            ForEach(deployments) { deployment in
-                                RecordRow(
-                                    leading: deployment.metadata.name,
-                                    secondary: deployment.metadata.namespace ?? "default",
-                                    tertiary: "\(deployment.readyReplicas)/\(deployment.desiredReplicas)",
-                                    trailing: "\(deployment.updatedReplicas)",
-                                    tone: deployment.health == .healthy ? .success : .warning
-                                )
-                            }
-                        }
+                        deploymentTable
                     }
                 }
+            }
+        }
+    }
+
+    private var podTable: some View {
+        Table(of: KubernetesPodResource.self, selection: $podSelection, sortOrder: $podSortOrder) {
+            TableColumn("Name", value: \.metadata.name) { pod in
+                Text(pod.metadata.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 120, ideal: 200)
+
+            TableColumn("Namespace") { pod in
+                Text(pod.metadata.namespace ?? "default")
+                    .lineLimit(1)
+            }
+            .width(min: 80, ideal: 120)
+
+            TableColumn("Node", value: \.nodeName) { pod in
+                Text(pod.nodeName)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 80, ideal: 160)
+
+            TableColumn("Phase", value: \.phase) { pod in
+                TableStateCell(
+                    text: pod.phase,
+                    tone: pod.health == .healthy ? .success : pod.health == .error ? .critical : .warning
+                )
+            }
+            .width(min: 80, ideal: 100)
+        } rows: {
+            ForEach(pods) { pod in
+                TableRow(pod)
+                    .contextMenu {
+                        Button("Copy Name", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([pod.metadata.name])
+                        }
+                        Button("Copy Namespace", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([pod.metadata.namespace ?? ""])
+                        }
+                    }
+            }
+        }
+    }
+
+    private var deploymentTable: some View {
+        Table(of: KubernetesDeploymentResource.self, selection: $deploymentSelection, sortOrder: $deploymentSortOrder) {
+            TableColumn("Name", value: \.metadata.name) { deployment in
+                Text(deployment.metadata.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 120, ideal: 200)
+
+            TableColumn("Namespace") { deployment in
+                Text(deployment.metadata.namespace ?? "default")
+                    .lineLimit(1)
+            }
+            .width(min: 80, ideal: 120)
+
+            TableColumn("Ready", value: \.readyReplicas) { deployment in
+                Text("\(deployment.readyReplicas)/\(deployment.desiredReplicas)")
+                    .lineLimit(1)
+            }
+            .width(min: 60, ideal: 100)
+
+            TableColumn("Updated", value: \.updatedReplicas) { deployment in
+                Text("\(deployment.updatedReplicas)")
+                    .lineLimit(1)
+            }
+            .width(min: 60, ideal: 100)
+        } rows: {
+            ForEach(deployments) { deployment in
+                TableRow(deployment)
+                    .contextMenu {
+                        Button("Copy Name", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([deployment.metadata.name])
+                        }
+                        Button("Copy Namespace", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([deployment.metadata.namespace ?? ""])
+                        }
+                    }
             }
         }
     }
@@ -2020,11 +2452,15 @@ struct KubernetesWorkloadsScreen: View {
 
 struct KubernetesServicesScreen: View {
     @EnvironmentObject private var appState: AppState
+    @State private var serviceSelection: Set<KubernetesServiceResource.ID> = []
+    @State private var serviceSortOrder: [KeyPathComparator<KubernetesServiceResource>] = [
+        .init(\.metadata.name, order: .forward)
+    ]
     let searchText: String
     private var services: [KubernetesServiceResource] {
         (appState.backendSnapshot?.kubernetes?.services ?? []).filter {
             matchesSearch(searchText, values: [$0.metadata.name, $0.metadata.namespace ?? "", $0.type, $0.clusterIP] + $0.ports)
-        }.sorted { "\($0.metadata.namespace ?? "default")/\($0.metadata.name)".localizedCaseInsensitiveCompare("\($1.metadata.namespace ?? "default")/\($1.metadata.name)") == .orderedAscending }
+        }.sorted(using: serviceSortOrder)
     }
 
     var body: some View {
@@ -2046,18 +2482,58 @@ struct KubernetesServicesScreen: View {
                         Text(searchText.isEmpty ? "No services reported by kubectl." : "No services match the current search.")
                             .foregroundStyle(.secondary)
                     } else {
-                        RecordList(columns: ["Name", "Namespace", "Type", "Ports"]) {
-                            ForEach(services) { service in
-                                RecordRow(
-                                    leading: service.metadata.name,
-                                    secondary: service.metadata.namespace ?? "default",
-                                    tertiary: service.type.isEmpty ? service.clusterIP : service.type,
-                                    trailing: service.ports.joined(separator: ", ")
-                                )
-                            }
-                        }
+                        serviceTable
                     }
                 }
+            }
+        }
+    }
+
+    private var serviceTable: some View {
+        Table(of: KubernetesServiceResource.self, selection: $serviceSelection, sortOrder: $serviceSortOrder) {
+            TableColumn("Name", value: \.metadata.name) { service in
+                Text(service.metadata.name)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 120, ideal: 200)
+
+            TableColumn("Namespace") { service in
+                Text(service.metadata.namespace ?? "default")
+                    .lineLimit(1)
+            }
+            .width(min: 80, ideal: 120)
+
+            TableColumn("Type", value: \.type) { service in
+                Text(service.type.isEmpty ? "—" : service.type)
+                    .lineLimit(1)
+            }
+            .width(min: 80, ideal: 100)
+
+            TableColumn("Cluster IP", value: \.clusterIP) { service in
+                Text(service.clusterIP)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 80, ideal: 140)
+
+            TableColumn("Ports") { service in
+                Text(service.ports.joined(separator: ", "))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .width(min: 80, ideal: 160)
+        } rows: {
+            ForEach(services) { service in
+                TableRow(service)
+                    .contextMenu {
+                        Button("Copy Name", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([service.metadata.name])
+                        }
+                        Button("Copy Cluster IP", systemImage: "doc.on.doc") {
+                            tableRowCopyToPasteboard([service.clusterIP])
+                        }
+                    }
             }
         }
     }
@@ -2242,131 +2718,6 @@ struct ActivityScreen: View {
     }
 }
 
-private enum SettingsPane: String, CaseIterable, Identifiable {
-    case general
-    case kubernetes
-    case networking
-    case integrations
-    case advanced
-
-    var id: String { rawValue }
-
-    var title: String { rawValue.capitalized }
-
-    var symbol: String {
-        switch self {
-        case .general: "gearshape"
-        case .kubernetes: "hexagon"
-        case .networking: "network"
-        case .integrations: "link.badge.plus"
-        case .advanced: "slider.horizontal.3"
-        }
-    }
-}
-
-struct SettingsWindowView: View {
-    @EnvironmentObject private var appState: AppState
-    @State private var selectedPane: SettingsPane = .general
-
-    var body: some View {
-        TabView(selection: $selectedPane) {
-            ForEach(SettingsPane.allCases) { pane in
-                SettingsPaneContent(pane: pane)
-                    .environmentObject(appState)
-                    .tabItem {
-                        Label(pane.title, systemImage: pane.symbol)
-                    }
-                    .tag(pane)
-            }
-        }
-        .tabViewStyle(.automatic)
-        .frame(width: 620, height: 440)
-    }
-}
-
-private struct SettingsPaneContent: View {
-    @EnvironmentObject private var appState: AppState
-    let pane: SettingsPane
-
-    var body: some View {
-        Form {
-            switch pane {
-            case .general:
-                Section("General") {
-                    Toggle("Auto refresh", isOn: $appState.autoRefresh)
-                        .toggleStyle(.switch)
-                    Picker("Auto refresh frequency", selection: $appState.autoRefreshFrequency) {
-                        ForEach(AutoRefreshFrequency.allCases) { frequency in
-                            Text(frequency.title).tag(frequency)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    Toggle("Live event feeds (experimental)", isOn: $appState.useEventBus)
-                        .toggleStyle(.switch)
-                        .help("When on, container/pod/log updates arrive via live feeds instead of polling. Restart the app after changing.")
-                    Toggle("Stream command output", isOn: $appState.useStreamingCommandOutput)
-                        .toggleStyle(.switch)
-                        .help("When on, colima lifecycle commands stream output live to the Activity view.")
-                    LabeledContent("Selected profile", value: appState.selectedProfile?.name ?? "None")
-                    LabeledContent("Active section", value: appState.selectedSection.title)
-                    LabeledContent("Refresh state", value: appState.isRefreshing ? "Refreshing" : "Idle")
-                }
-            case .kubernetes:
-                Section("Kubernetes") {
-                    LabeledContent("Enabled", value: appState.selectedProfile?.kubernetes.enabled == true ? "Yes" : "No")
-                    LabeledContent("Version", value: appState.selectedProfile?.kubernetes.version.nonEmpty ?? "Default")
-                    LabeledContent("Context", value: appState.selectedProfile?.kubernetes.context.nonEmpty ?? "Unavailable")
-                    HStack {
-                        Button(appState.selectedProfile?.kubernetes.enabled == true ? "Disable Kubernetes" : "Enable Kubernetes") {
-                            Task { await appState.setKubernetes(enabled: appState.selectedProfile?.kubernetes.enabled != true) }
-                        }
-                        .disabled(appState.selectedProfile == nil || appState.activeOperation != nil)
-
-                        Button("Edit Profile") {
-                            appState.editSelectedProfile()
-                        }
-                        .disabled(appState.selectedProfile == nil)
-                    }
-                }
-            case .networking:
-                Section("Networking") {
-                    LabeledContent("Docker context", value: appState.selectedProfileDetail?.dockerContext ?? appState.selectedProfile?.dockerContext ?? "")
-                    LabeledContent("Address", value: appState.selectedProfileDetail?.networkAddress ?? appState.selectedProfile?.ipAddress ?? "")
-                    LabeledContent("Socket", value: appState.selectedProfileDetail?.socket ?? appState.selectedProfile?.socket ?? "")
-                    LabeledContent("Mount type", value: appState.selectedProfile?.mountType?.label ?? "Unavailable")
-                }
-            case .integrations:
-                Section("Integrations") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(appState.diagnostics.tools) { tool in
-                            ToolRow(tool: tool)
-                        }
-                    }
-                }
-            case .advanced:
-                Section("Advanced") {
-                    HStack {
-                        Button("Update Profile") {
-                            Task { await appState.updateSelected() }
-                        }
-                        .disabled(appState.selectedProfile == nil || appState.activeOperation != nil)
-
-                        Button("Restart Profile") {
-                            Task { await appState.restartSelected() }
-                        }
-                        .disabled(appState.selectedProfile == nil || appState.activeOperation != nil)
-                    }
-                    LabeledContent("Command history", value: "\(appState.commandLog.count) entries")
-                    LabeledContent("Logs captured", value: appState.logs.isEmpty ? "No" : "Yes")
-                    LabeledContent("Diagnostics messages", value: "\(appState.diagnostics.messages.count)")
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .padding(.top, 10)
-    }
-}
-
 struct DiagnosticsScreen: View {
     @EnvironmentObject private var appState: AppState
 
@@ -2397,8 +2748,7 @@ struct DiagnosticsScreen: View {
                 symbol: "wrench.and.screwdriver"
             ) {
                 if appState.diagnostics.tools.isEmpty {
-                    Text("No tool checks captured yet.")
-                        .foregroundStyle(.secondary)
+                    EmptyStateView(kind: .noData, title: "No tool checks captured yet", message: "Run diagnostics to populate the tool inventory.", symbol: "wrench.and.screwdriver")
                 } else {
                     ForEach(appState.diagnostics.tools) { tool in
                         ToolRow(tool: tool)
@@ -2428,8 +2778,7 @@ struct DiagnosticsScreen: View {
                 symbol: "text.bubble"
             ) {
                 if appState.diagnostics.messages.isEmpty {
-                    Text("No diagnostic messages.")
-                        .foregroundStyle(.secondary)
+                    EmptyStateView(kind: .noData, title: "No diagnostic messages", message: "Diagnostics haven't reported any additional notes.", symbol: "text.bubble")
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(appState.diagnostics.messages, id: \.self) { message in
@@ -2636,5 +2985,22 @@ private extension CommandLogEntry.Status {
     var isRunning: Bool {
         if case .running = self { return true }
         return false
+    }
+}
+
+// MARK: - Table row for network profile endpoints (non-resource, derived view)
+
+struct NetworkEndpointRow: Identifiable, Hashable {
+    var id: String { name }
+    let name: String
+    let state: String
+    let endpoint: String
+    let context: String
+
+    init(_ row: (String, String, String, String)) {
+        self.name = row.0
+        self.state = row.1
+        self.endpoint = row.2
+        self.context = row.3
     }
 }

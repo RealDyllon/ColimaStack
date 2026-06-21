@@ -2,6 +2,7 @@
 //  ColimaStackApp.swift
 //  ColimaStack
 //
+//
 
 import AppKit
 import SwiftUI
@@ -26,13 +27,59 @@ struct ColimaStackApp: App {
                     await appState.runToolCheckTimer()
                 }
         }
-        .defaultSize(width: usesMarketingScreenshots ? 1280 : 1000, height: usesMarketingScreenshots ? 860 : 700)
+        .defaultSize(width: usesMarketingScreenshots ? 1280 : 1100, height: usesMarketingScreenshots ? 860 : 760)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Refresh") {
                     Task { await appState.refreshAll() }
                 }
                 .keyboardShortcut("r")
+
+                Button("Focus Search") {
+                    NotificationCenter.default.post(name: .focusWorkspaceSearch, object: nil)
+                }
+                .keyboardShortcut("f")
+            }
+
+            CommandGroup(after: .toolbar) {
+                TableDensityMenu()
+            }
+
+            CommandGroup(replacing: .windowList) {
+                WindowListMenu()
+            }
+
+            CommandGroup(after: .windowSize) {
+                Divider()
+                WindowListMenu()
+            }
+
+            // ⌘1–⌘5: jump to settings category. Posted as notifications
+            // so the open settings window (if any) can change its
+            // selected pane. The settings window listens to
+            // settingsPaneShortcut notifications with the pane name
+            // in userInfo.
+            CommandGroup(after: .sidebar) {
+                ForEach(Array(SettingsPane.allCases.enumerated()), id: \.element.id) { index, pane in
+                    Button("Show \(pane.title) Settings") {
+                        NotificationCenter.default.post(
+                            name: .settingsPaneShortcut,
+                            object: nil,
+                            userInfo: ["pane": pane.rawValue]
+                        )
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                }
+            }
+
+            // Help > Keyboard Shortcuts. Implemented as a menu that
+            // shows the shortcut list; selecting an entry is a no-op
+            // because the shortcut itself was the menu's trigger.
+            CommandGroup(replacing: .help) {
+                Menu("Keyboard Shortcuts") {
+                    KeyboardShortcutsMenu()
+                }
             }
         }
 
@@ -51,6 +98,13 @@ struct ColimaStackApp: App {
             SettingsWindowView()
                 .environmentObject(appState)
         }
+
+        Window("Welcome to ColimaStack", id: "onboarding") {
+            OnboardingView()
+                .environmentObject(appState)
+        }
+        .defaultSize(width: 720, height: 520)
+        .windowResizability(.contentSize)
     }
 
     private var menuBarExtraIsInserted: Binding<Bool> {
@@ -61,7 +115,7 @@ struct ColimaStackApp: App {
     }
 
     @MainActor
-    private static func makeAppState() -> AppState {
+    static func makeAppState() -> AppState {
         if ProcessInfo.processInfo.arguments.contains("--mock-data") {
             let state = AppState.preview()
             state.autoRefresh = false
@@ -87,6 +141,8 @@ struct ColimaStackApp: App {
     }
 
     private static func openMainWindow() {
+        // Single-window policy: reuse the existing main window. Open
+        // a new one only when none exists or ⌘N was pressed.
         NSApp.activate(ignoringOtherApps: true)
         if let window = NSApp.windows.first(where: { $0.canBecomeKey && $0.isVisible }) {
             window.makeKeyAndOrderFront(nil)
@@ -110,6 +166,10 @@ private final class MockLaunchWindowDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.arguments.contains("--mock-data"), !flag {
             openMainWindowIfNeeded()
         }
+        // Activate the existing window if any. This is the single-window policy.
+        if let existing = NSApp.windows.first(where: { $0.canBecomeKey }) {
+            existing.makeKeyAndOrderFront(nil)
+        }
         return true
     }
 
@@ -122,10 +182,72 @@ private final class MockLaunchWindowDelegate: NSObject, NSApplicationDelegate {
 private func sendNewWindowCommand() {
     if let newWindowItem = NSApp.mainMenu?.item(withTitle: "File")?.submenu?.item(withTitle: "New Window"),
        let action = newWindowItem.action {
-        NSApp.sendAction(action, to: newWindowItem.target, from: newWindowItem)
+        NSApp.sendAction(action, to: newWindowItem.target, from: nil)
         return
     }
 
     NSApp.sendAction(Selector(("newWindow:")), to: nil, from: nil)
     NSApp.sendAction(#selector(NSResponder.newWindowForTab(_:)), to: nil, from: nil)
+}
+
+// MARK: - Window > Window menu
+
+/// Lists open windows by their current route. The system provides a
+/// default version of this menu; we replace it so the entries are
+/// informative.
+private struct WindowListMenu: View {
+    @State private var tick = 0
+
+    var body: some View {
+        let windows = NSApp.windows.filter { $0.canBecomeKey && $0.isVisible }
+        if windows.isEmpty {
+            Text("No open windows")
+        } else {
+            ForEach(Array(windows.enumerated()), id: \.offset) { index, window in
+                Button {
+                    window.makeKeyAndOrderFront(nil)
+                } label: {
+                    Text(title(for: window, index: index))
+                }
+            }
+        }
+    }
+
+    private func title(for window: NSWindow, index: Int) -> String {
+        if index == 0 {
+            return "Main Window"
+        }
+        return "Main Window (\(window.title.isEmpty ? "untitled" : window.title))"
+    }
+}
+
+extension Notification.Name {
+    static let focusWorkspaceSearch = Notification.Name("focusWorkspaceSearch")
+    static let settingsPaneShortcut = Notification.Name("settingsPaneShortcut")
+}
+
+// MARK: - View > Table Density menu
+
+/// `View > Table Density > Standard | Compact`. The selection writes
+/// to `appState.defaultTableDensity`, which the resource tables read.
+private struct TableDensityMenu: View {
+    @StateObject private var appState = ColimaStackApp.makeAppState()
+
+    var body: some View {
+        Menu("Table Density") {
+            ForEach(TableDensity.allCases) { density in
+                Button {
+                    appState.defaultTableDensity = density
+                } label: {
+                    HStack {
+                        Text(density.label)
+                        if appState.defaultTableDensity == density {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

@@ -1,3 +1,13 @@
+//
+//  MenuBarView.swift
+//  ColimaStack
+//
+//  Menu bar: single-color profile status mark, structured menu
+//  (status header · Open · Refresh · Auto Refresh · profile · runtime
+//  · kubernetes · diagnostics · app), live-updates via the existing
+//  event bus. Part of the workspace-chrome capability.
+//
+
 import AppKit
 import SwiftUI
 
@@ -5,25 +15,11 @@ struct ColimaStackMenuBarLabel: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        Image(systemName: symbol)
+        let state = appState.selectedProfile?.state ?? appState.diagnostics.colima.state
+        let symbol = Icon.Profile.forState(state)
+        return Image(systemName: symbol.symbolName)
+            .foregroundStyle(Icon.Profile.tint(for: state))
             .accessibilityLabel(accessibilityLabel)
-    }
-
-    private var symbol: String {
-        switch appState.selectedProfile?.state ?? appState.diagnostics.colima.state {
-        case .running:
-            return "cube.transparent.fill"
-        case .starting, .stopping:
-            return "arrow.triangle.2.circlepath"
-        case .stopped:
-            return "cube.transparent"
-        case .degraded:
-            return "exclamationmark.triangle.fill"
-        case .broken:
-            return "xmark.octagon.fill"
-        case .unknown:
-            return "questionmark.circle"
-        }
     }
 
     private var accessibilityLabel: String {
@@ -40,54 +36,60 @@ struct ColimaStackMenuBarMenu: View {
     let openMainWindow: () -> Void
 
     var body: some View {
-        statusSection
+        statusHeader
         Divider()
 
-        Button("Open ColimaStack", systemImage: "macwindow") {
+        Button("Open ColimaStack", systemImage: Icon.Action.open.symbolName) {
             openMainWindow()
         }
+        .keyboardShortcut("0", modifiers: [.command])
 
-        Button("Refresh", systemImage: "arrow.clockwise") {
+        Button("Refresh Now", systemImage: Icon.Action.refresh.symbolName) {
             Task { await appState.refreshAll() }
         }
         .disabled(appState.isRefreshing)
+        .keyboardShortcut("r", modifiers: [.command])
 
         Toggle(isOn: $appState.autoRefresh) {
-            Label("Auto Refresh", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+            Label("Auto Refresh", systemImage: Icon.Action.autoRefresh.symbolName)
         }
 
         Divider()
-        profilesMenu
-        selectedProfileMenu
-        dockerResourcesMenu
-        kubernetesMenu
-        diagnosticsMenu
+        profileSection
+        runtimeSection
+        kubernetesSection
+        diagnosticsSection
 
         Divider()
-        Button("Settings...", systemImage: "gearshape") {
+        Button("Settings...", systemImage: Icon.Action.settings.symbolName) {
             openSettings()
             NSApp.activate(ignoringOtherApps: true)
         }
+        .keyboardShortcut(",", modifiers: [.command])
 
-        Button("About ColimaStack", systemImage: "info.circle") {
+        Button("About ColimaStack", systemImage: Icon.Action.about.symbolName) {
             NSApp.orderFrontStandardAboutPanel(nil)
             NSApp.activate(ignoringOtherApps: true)
         }
 
-        Button("Quit ColimaStack", systemImage: "power") {
+        Button("Quit ColimaStack", systemImage: Icon.Action.quit.symbolName) {
             NSApp.terminate(nil)
         }
-        .keyboardShortcut("q")
+        .keyboardShortcut("q", modifiers: [.command])
     }
 
-    private var statusSection: some View {
+    // MARK: - Status header
+
+    private var statusHeader: some View {
         Section {
             if let activeOperation = appState.activeOperation {
                 Label(activeOperation, systemImage: "bolt.horizontal.circle")
             } else if appState.isRefreshing {
-                Label("Refreshing runtime data", systemImage: "arrow.clockwise")
+                Label("Refreshing runtime data", systemImage: Icon.Action.refresh.symbolName)
             } else if let profile = appState.selectedProfile {
-                Label("\(profile.name) - \(profile.state.label)", systemImage: symbol(for: profile.state))
+                Label(profile.name, systemImage: Icon.Profile.forState(profile.state).symbolName)
+                Label(profile.state.label, systemImage: "circle.fill")
+                    .foregroundStyle(Icon.Profile.tint(for: profile.state))
                 if let runtime = profile.runtime {
                     Label(runtime.label, systemImage: "cpu")
                 }
@@ -98,7 +100,7 @@ struct ColimaStackMenuBarMenu: View {
                     connectionStatusLabels
                 }
             } else if appState.hasColima {
-                Label("No active profile", systemImage: "cube.transparent")
+                Label("No active profile", systemImage: "shippingbox")
             } else {
                 Label("Colima setup required", systemImage: "exclamationmark.triangle")
             }
@@ -139,10 +141,12 @@ struct ColimaStackMenuBarMenu: View {
         }
     }
 
-    private var profilesMenu: some View {
+    // MARK: - Sections
+
+    private var profileSection: some View {
         Menu {
             if appState.profiles.isEmpty {
-                Button("Create Profile...", systemImage: "plus") {
+                Button("Create Profile...", systemImage: Icon.Action.add.symbolName) {
                     openMainWindow()
                     appState.createProfile()
                 }
@@ -158,81 +162,44 @@ struct ColimaStackMenuBarMenu: View {
                         profileLifecycleButtons(for: profile)
 
                         Divider()
-                        Button("Edit Profile...", systemImage: "slider.horizontal.3") {
+                        Button("Edit Profile...", systemImage: Icon.Action.edit.symbolName) {
                             select(profile)
                             openMainWindow()
                             appState.editSelectedProfile()
                         }
 
                         if !profile.dockerContext.isEmpty {
-                            Button("Copy Docker Context", systemImage: "doc.on.doc") {
+                            Button("Copy Docker Context", systemImage: Icon.Action.copy.symbolName) {
                                 copy(profile.dockerContext)
                             }
                         }
 
                         if !profile.socket.isEmpty {
-                            Button("Copy Socket Path", systemImage: "doc.on.doc") {
+                            Button("Copy Socket Path", systemImage: Icon.Action.copy.symbolName) {
                                 copy(profile.socket)
                             }
                         }
 
-                        Button("Reveal Profile Folder", systemImage: "folder") {
+                        Button("Reveal Profile Folder", systemImage: Icon.Action.reveal.symbolName) {
                             reveal(profile.configurationPaths.profileConfiguration)
                         }
                     } label: {
-                        Label("\(selectedPrefix(for: profile))\(profile.name) - \(profile.state.label)", systemImage: symbol(for: profile.state))
+                        Label("\(selectedPrefix(for: profile))\(profile.name)", systemImage: Icon.Profile.forState(profile.state).symbolName)
                     }
                 }
 
                 Divider()
-                Button("Create Profile...", systemImage: "plus") {
+                Button("Create Profile...", systemImage: Icon.Action.add.symbolName) {
                     openMainWindow()
                     appState.createProfile()
                 }
             }
         } label: {
-            Label("Profiles", systemImage: "person.2")
+            Label("Profiles", systemImage: Icon.Section.profiles.symbolName)
         }
     }
 
-    private var selectedProfileMenu: some View {
-        Menu {
-            if let profile = appState.selectedProfile {
-                profileLifecycleButtons(for: profile)
-
-                Divider()
-                Button("Update Profile", systemImage: "arrow.down.circle") {
-                    Task { await appState.updateSelected() }
-                }
-                .disabled(appState.activeOperation != nil)
-
-                Button("Edit Profile...", systemImage: "slider.horizontal.3") {
-                    openMainWindow()
-                    appState.editSelectedProfile()
-                }
-
-                Divider()
-                if !appState.logs.isEmpty {
-                    Button("Open Activity Logs", systemImage: "doc.plaintext") {
-                        openMainWindow(section: .activity)
-                    }
-                }
-
-                Button("Reveal Profile Folder", systemImage: "folder") {
-                    reveal(profile.configurationPaths.profileConfiguration)
-                }
-            } else {
-                Button("Create Profile...", systemImage: "plus") {
-                    openMainWindow()
-                    appState.createProfile()
-                }
-            }
-        } label: {
-            Label("Selected Profile", systemImage: "cube.transparent")
-        }
-    }
-
-    private var dockerResourcesMenu: some View {
+    private var runtimeSection: some View {
         Menu {
             if let docker = appState.backendSnapshot?.docker {
                 containersMenu(containers: docker.containers)
@@ -240,7 +207,7 @@ struct ColimaStackMenuBarMenu: View {
                 mountsMenu(volumes: docker.volumes)
 
                 Divider()
-                Button("Open Containers", systemImage: "shippingbox") {
+                Button("Open Containers", systemImage: Icon.Runtime.docker.symbolName) {
                     openMainWindow(section: .containers)
                 }
                 Button("Open Images", systemImage: "square.stack.3d.up") {
@@ -250,13 +217,74 @@ struct ColimaStackMenuBarMenu: View {
                     openMainWindow(section: .volumes)
                 }
             } else {
-                Button("Open Runtime View", systemImage: "shippingbox") {
+                Button("Open Runtime View", systemImage: Icon.Runtime.docker.symbolName) {
                     openMainWindow(section: .containers)
                 }
                 .disabled(appState.selectedProfile == nil)
             }
         } label: {
-            Label("Docker Resources", systemImage: "shippingbox")
+            Label("Runtime", systemImage: Icon.Section.runtime.symbolName)
+        }
+    }
+
+    private var kubernetesSection: some View {
+        Menu {
+            if let profile = appState.selectedProfile {
+                Button(profile.kubernetes.enabled ? "Disable Kubernetes" : "Enable Kubernetes", systemImage: Icon.Kubernetes.enabled.symbolName) {
+                    Task { await appState.setKubernetes(enabled: !profile.kubernetes.enabled) }
+                }
+                .disabled(appState.activeOperation != nil)
+
+                Button("Restart Profile", systemImage: Icon.Action.restart.symbolName) {
+                    Task { await appState.restartSelected() }
+                }
+                .disabled(appState.activeOperation != nil)
+
+                Divider()
+                if let kubernetes = appState.backendSnapshot?.kubernetes {
+                    Label("\(kubernetes.nodes.count) nodes", systemImage: Icon.Kubernetes.cluster.symbolName)
+                    Label("\(kubernetes.pods.count) pods", systemImage: Icon.Kubernetes.workloads.symbolName)
+                    Label("\(kubernetes.services.count) services", systemImage: Icon.Kubernetes.services.symbolName)
+                    Divider()
+                }
+
+                Button("Open Cluster", systemImage: Icon.Kubernetes.cluster.symbolName) {
+                    openMainWindow(section: .kubernetesCluster)
+                }
+                Button("Open Workloads", systemImage: Icon.Kubernetes.workloads.symbolName) {
+                    openMainWindow(section: .kubernetesWorkloads)
+                }
+                Button("Open Services", systemImage: Icon.Kubernetes.services.symbolName) {
+                    openMainWindow(section: .kubernetesServices)
+                }
+            } else {
+                Text("No active profile")
+            }
+        } label: {
+            Label("Kubernetes", systemImage: Icon.Section.kubernetes.symbolName)
+        }
+    }
+
+    private var diagnosticsSection: some View {
+        Menu {
+            Button("Run Checks", systemImage: Icon.Action.diagnostics.symbolName) {
+                Task { await appState.refreshAll() }
+                openMainWindow(section: .diagnostics)
+            }
+
+            Button("Open Diagnostics", systemImage: Icon.Action.diagnostics.symbolName) {
+                openMainWindow(section: .diagnostics)
+            }
+
+            Button("Open Activity", systemImage: Icon.Action.terminal.symbolName) {
+                openMainWindow(section: .activity)
+            }
+
+            Button("Copy Diagnostics Summary", systemImage: Icon.Action.copy.symbolName) {
+                copy(diagnosticsSummary)
+            }
+        } label: {
+            Label("Diagnostics", systemImage: Icon.Action.diagnostics.symbolName)
         }
     }
 
@@ -273,20 +301,20 @@ struct ColimaStackMenuBarMenu: View {
                             }
                         }
 
-                        Button("Open Containers View", systemImage: "shippingbox") {
+                        Button("Open Containers View", systemImage: Icon.Runtime.docker.symbolName) {
                             openMainWindow(section: .containers)
                         }
 
-                        Button("Copy Container ID", systemImage: "doc.on.doc") {
+                        Button("Copy Container ID", systemImage: Icon.Action.copy.symbolName) {
                             copy(container.id)
                         }
 
-                        Button("Copy Image", systemImage: "doc.on.doc") {
+                        Button("Copy Image", systemImage: Icon.Action.copy.symbolName) {
                             copy(container.image)
                         }
 
                         if !container.ports.isEmpty {
-                            Button("Copy Ports", systemImage: "doc.on.doc") {
+                            Button("Copy Ports", systemImage: Icon.Action.copy.symbolName) {
                                 copy(container.ports)
                             }
                         }
@@ -303,7 +331,7 @@ struct ColimaStackMenuBarMenu: View {
                 }
             }
         } label: {
-            Label("Containers", systemImage: "shippingbox")
+            Label("Containers", systemImage: Icon.Runtime.docker.symbolName)
         }
     }
 
@@ -341,7 +369,7 @@ struct ColimaStackMenuBarMenu: View {
             if !profileMounts.isEmpty {
                 Section("Profile Mounts") {
                     ForEach(profileMounts.prefix(8)) { mount in
-                        Button(displayMountPoint(for: mount), systemImage: "folder") {
+                        Button(displayMountPoint(for: mount), systemImage: Icon.Action.reveal.symbolName) {
                             reveal(URL(fileURLWithPath: mount.location))
                         }
                     }
@@ -367,83 +395,22 @@ struct ColimaStackMenuBarMenu: View {
         }
     }
 
-    private var kubernetesMenu: some View {
-        Menu {
-            if let profile = appState.selectedProfile {
-                Button(profile.kubernetes.enabled ? "Disable Kubernetes" : "Enable Kubernetes", systemImage: "hexagon") {
-                    Task { await appState.setKubernetes(enabled: !profile.kubernetes.enabled) }
-                }
-                .disabled(appState.activeOperation != nil)
-
-                Button("Restart Profile", systemImage: "arrow.triangle.2.circlepath") {
-                    Task { await appState.restartSelected() }
-                }
-                .disabled(appState.activeOperation != nil)
-
-                Divider()
-                if let kubernetes = appState.backendSnapshot?.kubernetes {
-                    Label("\(kubernetes.nodes.count) nodes", systemImage: "server.rack")
-                    Label("\(kubernetes.pods.count) pods", systemImage: "rectangle.3.group")
-                    Label("\(kubernetes.services.count) services", systemImage: "point.3.connected.trianglepath.dotted")
-                    Divider()
-                }
-
-                Button("Open Cluster", systemImage: "server.rack") {
-                    openMainWindow(section: .kubernetesCluster)
-                }
-                Button("Open Workloads", systemImage: "rectangle.3.group") {
-                    openMainWindow(section: .kubernetesWorkloads)
-                }
-                Button("Open Services", systemImage: "point.3.connected.trianglepath.dotted") {
-                    openMainWindow(section: .kubernetesServices)
-                }
-            } else {
-                Text("No active profile")
-            }
-        } label: {
-            Label("Kubernetes", systemImage: "hexagon")
-        }
-    }
-
-    private var diagnosticsMenu: some View {
-        Menu {
-            Button("Run Checks", systemImage: "stethoscope") {
-                Task { await appState.refreshAll() }
-                openMainWindow(section: .diagnostics)
-            }
-
-            Button("Open Diagnostics", systemImage: "list.bullet.clipboard") {
-                openMainWindow(section: .diagnostics)
-            }
-
-            Button("Open Activity", systemImage: "terminal") {
-                openMainWindow(section: .activity)
-            }
-
-            Button("Copy Diagnostics Summary", systemImage: "doc.on.doc") {
-                copy(diagnosticsSummary)
-            }
-        } label: {
-            Label("Diagnostics", systemImage: "stethoscope")
-        }
-    }
-
     @ViewBuilder
     private func profileLifecycleButtons(for profile: ColimaProfile) -> some View {
         if profile.state == .running {
-            Button("Stop", systemImage: "stop.fill") {
+            Button("Stop", systemImage: Icon.Action.stop.symbolName) {
                 select(profile)
                 Task { await appState.stopSelected() }
             }
             .disabled(appState.activeOperation != nil)
 
-            Button("Restart", systemImage: "arrow.triangle.2.circlepath") {
+            Button("Restart", systemImage: Icon.Action.restart.symbolName) {
                 select(profile)
                 Task { await appState.restartSelected() }
             }
             .disabled(appState.activeOperation != nil)
         } else {
-            Button("Start", systemImage: "play.fill") {
+            Button("Start", systemImage: Icon.Action.start.symbolName) {
                 select(profile)
                 Task { await appState.startSelected() }
             }
@@ -461,23 +428,6 @@ struct ColimaStackMenuBarMenu: View {
             appState.selectedSection = section
         }
         openMainWindow()
-    }
-
-    private func symbol(for state: ProfileState) -> String {
-        switch state {
-        case .running:
-            return "play.circle.fill"
-        case .starting, .stopping:
-            return "arrow.triangle.2.circlepath"
-        case .stopped:
-            return "stop.circle"
-        case .degraded:
-            return "exclamationmark.triangle.fill"
-        case .broken:
-            return "xmark.octagon.fill"
-        case .unknown:
-            return "questionmark.circle"
-        }
     }
 
     private func selectedPrefix(for profile: ColimaProfile) -> String {
