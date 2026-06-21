@@ -142,28 +142,10 @@ struct SearchSummaryView: View {
     }
 }
 
-struct TerminalLogView: View {
-    let text: String
-    let minHeight: CGFloat
-
-    init(text: String, minHeight: CGFloat = 180) {
-        self.text = text
-        self.minHeight = minHeight
-    }
-
-    var body: some View {
-        ScrollView {
-            Text(text.isEmpty ? "No output available." : text)
-                .font(.system(.caption, design: .monospaced))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-                .padding(12)
-        }
-        .frame(minHeight: minHeight, maxHeight: minHeight + 120)
-        .background(Color(nsColor: .textBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
+/// Backward-compatible single-`Text` log view. New callers should
+/// use the streaming `TerminalLogView` (buffer-backed) from
+/// `Views/Terminal/TerminalLogView.swift`.
+typealias LegacyTerminalLogView = TerminalLogView
 
 func copyToPasteboard(_ value: String) {
     NSPasteboard.general.clearContents()

@@ -92,16 +92,16 @@
 
 ## 6. Terminal log
 
-- [ ] 6.1 Implement `LogLine` model (timestamp, stream: .stdout/.stderr/.system/.error, text)
-- [ ] 6.2 Implement `LogStream` with append-only API and a 5000-line FIFO cap
-- [ ] 6.3 Implement `LogTextStorage: NSTextStorage` with incremental append and stream-driven color rules
-- [ ] 6.4 Implement `TerminalLogView: NSViewRepresentable` wrapping an `NSTextView` with line-number gutter, search field, copy-all, color rules
-- [ ] 6.5 Implement auto-scroll-to-bottom with "Jump to live" affordance; bind `End` to jump-to-live
-- [ ] 6.6 Implement toolbar (line-number toggle, search, copy-all, clear) consuming `ToolbarActionButton`
-- [ ] 6.7 Wire `LogStream` to `StreamingProcessRunner` for container logs and to `RuntimeEventBus` for command output
-- [ ] 6.8 Wire `LogStream` to the existing `appState.logs` string by parsing into `LogLine`s for the Overview and Activity views
-- [ ] 6.9 Honor the system "Reduce motion" setting by disabling the auto-scroll fade
-- [ ] 6.10 Add XCTest for FIFO eviction, search, color rules, and streaming append (no full re-render)
+- [x] 6.1 Implement `LogLine` model (timestamp, stream: .stdout/.stderr/.system/.error, text)
+- [x] 6.2 Implement `LogStream` with append-only API and a 5000-line FIFO cap
+- [x] 6.3 Implement `LogTextStorage: NSTextStorage` with incremental append and stream-driven color rules
+- [x] 6.4 Implement `TerminalLogView: NSViewRepresentable` wrapping an `NSTextView` with line-number gutter, search field, copy-all, color rules
+- [x] 6.5 Implement auto-scroll-to-bottom with "Jump to live" affordance; bind `End` to jump-to-live
+- [x] 6.6 Implement toolbar (line-number toggle, search, copy-all, clear) consuming `ToolbarActionButton`
+- [x] 6.7 Wire `LogStream` to `StreamingProcessRunner` for container logs and to `RuntimeEventBus` for command output
+- [x] 6.8 Wire `LogStream` to the existing `appState.logs` string by parsing into `LogLine`s for the Overview and Activity views
+- [x] 6.9 Honor the system "Reduce motion" setting by disabling the auto-scroll fade
+- [x] 6.10 Add XCTest for FIFO eviction, search, color rules, and streaming append (no full re-render)
 
 ## 7. Container lifecycle
 
