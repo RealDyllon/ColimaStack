@@ -153,15 +153,15 @@
 
 ## 11. Accessibility
 
-- [ ] 11.1 Audit and add `.accessibilityLabel` to every button, toggle, table row, sidebar row, card header, status indicator, metric tile
-- [ ] 11.2 Add `.accessibilityHint` to non-obvious actions (Start/Stop/Restart on a row, etc.)
-- [ ] 11.3 Use `.accessibilityElement(children: .combine)` for state dots + labels so VoiceOver reads "State: running" once
-- [ ] 11.4 Implement dynamic-type support: ensure no truncation at any size; reflow metric tiles and card rows vertically below a threshold
-- [ ] 11.5 Implement high-contrast mode: border opacity 8% → 24%, text contrast 90% → 100%; add "Force high contrast" toggle in Settings > General
-- [ ] 11.6 Run the contrast test in both color modes; fix any failing token combinations
-- [ ] 11.7 Implement `AccessibilityNotification.Announcement` for significant state changes (profile started/stopped, command failed, container unhealthy) with throttling
-- [ ] 11.8 Add `Help > Keyboard Shortcuts` menu listing every shortcut grouped by surface
-- [ ] 11.9 Add accessibility XCTest that walks the entire app and asserts every interactive control has a label and is reachable via Tab
+- [x] 11.1 Audit and add `.accessibilityLabel` to every button, toggle, table row, sidebar row, card header, status indicator, metric tile
+- [x] 11.2 Add `.accessibilityHint` to non-obvious actions (Start/Stop/Restart on a row, etc.)
+- [x] 11.3 Use `.accessibilityElement(children: .combine)` for state dots + labels so VoiceOver reads "State: running" once
+- [x] 11.4 Implement dynamic-type support: ensure no truncation at any size; reflow metric tiles and card rows vertically below a threshold
+- [x] 11.5 Implement high-contrast mode: border opacity 8% → 24%, text contrast 90% → 100%; add "Force high contrast" toggle in Settings > General
+- [x] 11.6 Run the contrast test in both color modes; fix any failing token combinations
+- [x] 11.7 Implement `AccessibilityNotification.Announcement` for significant state changes (profile started/stopped, command failed, container unhealthy) with throttling
+- [x] 11.8 Add `Help > Keyboard Shortcuts` menu listing every shortcut grouped by surface
+- [x] 11.9 Add accessibility XCTest that walks the entire app and asserts every interactive control has a label and is reachable via Tab
 
 ## 12. Final polish and quality gates
 

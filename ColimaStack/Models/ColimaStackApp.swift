@@ -72,6 +72,15 @@ struct ColimaStackApp: App {
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
                 }
             }
+
+            // Help > Keyboard Shortcuts. Implemented as a menu that
+            // shows the shortcut list; selecting an entry is a no-op
+            // because the shortcut itself was the menu's trigger.
+            CommandGroup(replacing: .help) {
+                Menu("Keyboard Shortcuts") {
+                    KeyboardShortcutsMenu()
+                }
+            }
         }
 
         MenuBarExtra(isInserted: menuBarExtraIsInserted) {
