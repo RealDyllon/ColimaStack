@@ -76,6 +76,20 @@ public extension Icon {
             case .unknown: return unknown
             }
         }
+
+        /// Color tint for a given profile state. The sidebar roster
+        /// and the menu bar label apply this so state changes are
+        /// legible at a glance without shouting in saturated color.
+        static func tint(for state: ProfileState) -> Color {
+            switch state {
+            case .running: return .green
+            case .starting, .stopping: return .blue
+            case .stopped: return .secondary
+            case .degraded: return .yellow
+            case .broken: return .red
+            case .unknown: return .secondary
+            }
+        }
     }
 }
 
@@ -143,7 +157,7 @@ public extension Icon {
 /// access on the namespace returns an `IconView` so the call site can
 /// use `Icon.brand` directly in a view hierarchy.
 public struct IconView: View {
-    let symbolName: String
+    public let symbolName: String
     let size: DesignSystem.IconSizeKind
 
     public init(symbolName: String, size: DesignSystem.IconSizeKind) {

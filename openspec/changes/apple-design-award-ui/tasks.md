@@ -31,18 +31,18 @@
 
 ## 2. Workspace chrome
 
-- [ ] 2.1 Add `NavigationSplitView` configuration with `.navigationSplitViewStyle(.balanced)`, sidebar material, and the new `ColumnWidth(min: 250, ideal: 280, max: 360)`
-- [ ] 2.2 Rewrite the toolbar using `ToolbarItem` / `ToolbarItemGroup` / `ControlGroup` (Refresh · spacer · Lifecycle ControlGroup · spacer · Auto Refresh toggle · flexible space · Run Diagnostics · Settings · About)
-- [ ] 2.3 Implement `NSToolbarController: NSViewControllerRepresentable` for items that need NSToolbar-level customization (initially empty; grows as needed)
-- [ ] 2.4 Set the window title to "ColimaStack"; remove `navigationTitle` from the sidebar; move the brand mark to a sidebar header that shows brand + tagline + selected profile summary
-- [ ] 2.5 Implement the secondary title line showing the active route name via `.toolbarTitleMenu` or `Window.titlebarAppearsTransparent` workaround
-- [ ] 2.6 Move `.searchable` to the toolbar with the route's `searchScopeLabel` as the prompt; bind `⌘F` to focus the search field
-- [ ] 2.7 Update `WindowGroup` `defaultSize` to 1100×760 and `minSize` to 920×620; verify auto-collapse below threshold
-- [ ] 2.8 Implement the runtime health footer in the sidebar (compact status line: "All systems operational" / "Docker disconnected" / etc.) with `Icon.health.ok` / `.degraded` / `.failed`
-- [ ] 2.9 Implement single-window policy: opening from the menu bar, dock, or deep link activates the existing window; `⌘N` opens a new one
-- [ ] 2.10 Add the `Window > Window` menu listing open windows by current route
-- [ ] 2.11 Update `ColimaStackMenuBarLabel` to use the new `Icon.profile.<state>` with the single colored mark; remove any text in the menu bar title
-- [ ] 2.12 Update `ColimaStackMenuBarMenu` structure: status header · Open Main Window · Refresh Now · Auto Refresh · profile section · runtime section · kubernetes section · diagnostics section · app section. Honor live updates via the existing event bus
+- [x] 2.1 Add `NavigationSplitView` configuration with `.navigationSplitViewStyle(.balanced)`, sidebar material, and the new `ColumnWidth(min: 250, ideal: 280, max: 360)`
+- [x] 2.2 Rewrite the toolbar using `ToolbarItem` / `ToolbarItemGroup` / `ControlGroup` (Refresh · spacer · Lifecycle ControlGroup · spacer · Auto Refresh toggle · flexible space · Run Diagnostics · Settings · About)
+- [x] 2.3 Implement `NSToolbarController: NSViewControllerRepresentable` for items that need NSToolbar-level customization (initially empty; grows as needed)
+- [x] 2.4 Set the window title to "ColimaStack"; remove `navigationTitle` from the sidebar; move the brand mark to a sidebar header that shows brand + tagline + selected profile summary
+- [x] 2.5 Implement the secondary title line showing the active route name via `.toolbarTitleMenu` or `Window.titlebarAppearsTransparent` workaround
+- [x] 2.6 Move `.searchable` to the toolbar with the route's `searchScopeLabel` as the prompt; bind `⌘F` to focus the search field
+- [x] 2.7 Update `WindowGroup` `defaultSize` to 1100×760 and `minSize` to 920×620; verify auto-collapse below threshold
+- [x] 2.8 Implement the runtime health footer in the sidebar (compact status line: "All systems operational" / "Docker disconnected" / etc.) with `Icon.health.ok` / `.degraded` / `.failed`
+- [x] 2.9 Implement single-window policy: opening from the menu bar, dock, or deep link activates the existing window; `⌘N` opens a new one
+- [x] 2.10 Add the `Window > Window` menu listing open windows by current route
+- [x] 2.11 Update `ColimaStackMenuBarLabel` to use the new `Icon.profile.<state>` with the single colored mark; remove any text in the menu bar title
+- [x] 2.12 Update `ColimaStackMenuBarMenu` structure: status header · Open Main Window · Refresh Now · Auto Refresh · profile section · runtime section · kubernetes section · diagnostics section · app section. Honor live updates via the existing event bus
 
 ## 3. Data tables
 
