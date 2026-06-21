@@ -9,6 +9,9 @@
 # requires that every view consume tokens via `DesignSystem.*`,
 # `Icon.*`, or the shared primitives.
 #
+# Also flags bare "No ..." text literals in view code (the
+# empty-states pass requires `EmptyStateView`).
+#
 # Usage:
 #   scripts/lint-no-raw-tokens.sh                 # check (fails on new violations)
 #   scripts/lint-no-raw-tokens.sh --write-baseline  # write the current set as the baseline
@@ -24,6 +27,8 @@ SCAN_ROOT="$REPO_ROOT/ColimaStack/Views"
 BASELINE_FILE="$REPO_ROOT/scripts/.lint-no-raw-tokens.baseline"
 ALLOWLIST=(
   "ColimaStack/DesignSystem/Icon.swift"
+  "ColimaStack/Views/Tables/ResourceTables.swift"
+  "ColimaStack/Views/MenuBarView.swift"
 )
 
 EXCLUDES=()
@@ -49,6 +54,7 @@ CURRENT_VIOLATIONS="$(
     scan "Color() init" '\bColor\(\s*nsColor\s*:|\bColor\(\s*red\s*:|\bColor\(\s*green\s*:|\bColor\(\s*blue\s*:'
     scan ".foregroundStyle(Color.*)" '\.foregroundStyle\(\s*Color\.(blue|green|red|orange|yellow|purple|pink|secondary)\b'
     scan ".font(.system(size:" '\.font\(\s*\.system\(\s*size\s*:'
+    scan "Text(\"No ...\")" 'Text\(\s*"No\s'
   } | sort -u
 )"
 

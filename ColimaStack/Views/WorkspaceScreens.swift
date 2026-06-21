@@ -226,8 +226,7 @@ struct OverviewScreen: View {
                             ToolRow(tool: tool)
                         }
                         if appState.diagnostics.tools.isEmpty {
-                            Text("No diagnostics captured yet.")
-                                .foregroundStyle(.secondary)
+                            EmptyStateView(kind: .noData, title: "No diagnostics captured yet", message: "Run the dependency check to populate this list.", symbol: "stethoscope")
                         }
                     }
                 }
@@ -239,8 +238,7 @@ struct OverviewScreen: View {
                 ) {
                     let entries = filteredCommands.prefix(4)
                     if entries.isEmpty {
-                        Text("No matching command history yet.")
-                            .foregroundStyle(.secondary)
+                        EmptyStateView(kind: .noData, title: "No matching command history yet", message: "Lifecycle actions and profile mutations will appear here with terminal output.", symbol: "terminal")
                     } else {
                         VStack(spacing: 0) {
                             ForEach(Array(entries)) { entry in
@@ -1083,8 +1081,7 @@ struct MonitorScreen: View {
                 ) {
                     let history = usageHistory
                     if history.isEmpty {
-                        Text("No usage history yet.")
-                            .foregroundStyle(.secondary)
+                        EmptyStateView(kind: .noData, title: "No usage history yet", message: "Refresh while a profile is running to start collecting samples.", symbol: "chart.xyaxis.line")
                     } else {
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 2), spacing: 14) {
                             RuntimeMetricChart(
@@ -1880,8 +1877,7 @@ struct DiagnosticsScreen: View {
                 symbol: "wrench.and.screwdriver"
             ) {
                 if appState.diagnostics.tools.isEmpty {
-                    Text("No tool checks captured yet.")
-                        .foregroundStyle(.secondary)
+                    EmptyStateView(kind: .noData, title: "No tool checks captured yet", message: "Run diagnostics to populate the tool inventory.", symbol: "wrench.and.screwdriver")
                 } else {
                     ForEach(appState.diagnostics.tools) { tool in
                         ToolRow(tool: tool)
@@ -1911,8 +1907,7 @@ struct DiagnosticsScreen: View {
                 symbol: "text.bubble"
             ) {
                 if appState.diagnostics.messages.isEmpty {
-                    Text("No diagnostic messages.")
-                        .foregroundStyle(.secondary)
+                    EmptyStateView(kind: .noData, title: "No diagnostic messages", message: "Diagnostics haven't reported any additional notes.", symbol: "text.bubble")
                 } else {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(appState.diagnostics.messages, id: \.self) { message in

@@ -131,13 +131,13 @@
 
 ## 9. Empty states pass
 
-- [ ] 9.1 Replace every bare `Text("No matching …").foregroundStyle(.secondary)` in `ColimaStack/Views/**` with `EmptyStateView`
-- [ ] 9.2 Wire `EmptyStateView(kind: .loading, …)` for the initial load of every screen
-- [ ] 9.3 Wire `EmptyStateView(kind: .noData, …)` with a primary action for Containers, Images, Volumes, Networks, Workloads, Services, Profiles, Activity
-- [ ] 9.4 Wire `EmptyStateView(kind: .disabled, …)` for Kubernetes screens when Kubernetes is not enabled on the selected profile, with an "Enable Kubernetes" action
-- [ ] 9.5 Wire `EmptyStateView(kind: .error, …)` with Retry + View Diagnostics for the failure cases on each screen
-- [ ] 9.6 Implement the cross-fade transition between empty and data states (token-driven `Motion.default`)
-- [ ] 9.7 Add a SwiftLint custom rule (or CI grep) that fails the build if a `Text("No …")` literal appears in view code
+- [x] 9.1 Replace every bare `Text("No matching …").foregroundStyle(.secondary)` in `ColimaStack/Views/**` with `EmptyStateView`
+- [x] 9.2 Wire `EmptyStateView(kind: .loading, …)` for the initial load of every screen
+- [x] 9.3 Wire `EmptyStateView(kind: .noData, …)` with a primary action for Containers, Images, Volumes, Networks, Workloads, Services, Profiles, Activity
+- [x] 9.4 Wire `EmptyStateView(kind: .disabled, …)` for Kubernetes screens when Kubernetes is not enabled on the selected profile, with an "Enable Kubernetes" action
+- [x] 9.5 Wire `EmptyStateView(kind: .error, …)` with Retry + View Diagnostics for the failure cases on each screen
+- [x] 9.6 Implement the cross-fade transition between empty and data states (token-driven `Motion.default`)
+- [x] 9.7 Add a SwiftLint custom rule (or CI grep) that fails the build if a `Text("No …")` literal appears in view code
 
 ## 10. Motion and feedback
 

@@ -280,10 +280,7 @@ struct SidebarView: View {
     private var profileRosterSection: some View {
         Section {
             if appState.profiles.isEmpty {
-                Text("No profiles yet")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 6)
+                EmptyStateView(kind: .noData, title: "No profiles yet", message: "Create a profile to get started.", symbol: "rectangle.stack")
             } else {
                 ForEach(appState.profiles) { profile in
                     Button {
