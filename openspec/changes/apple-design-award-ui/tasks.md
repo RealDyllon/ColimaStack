@@ -116,18 +116,18 @@
 
 ## 8. Onboarding
 
-- [ ] 8.1 Add a new `Window` scene to `ColimaStackApp` for `OnboardingWindow`; suppress the main window on first run
-- [ ] 8.2 Implement first-run detection via `UserDefaults` flag `colimastack.didCompleteOnboarding`
-- [ ] 8.3 Implement the Welcome step (brand mark, value prop, Get Started, Skip onboarding)
-- [ ] 8.4 Implement the Dependency Check step using existing `ToolCheck`; per-tool row with install/locate actions
-- [ ] 8.5 Implement the "Install with Homebrew" popover that shows the `brew install …` command and a Copy action
-- [ ] 8.6 Implement the "Locate manually…" file picker for `limactl`
-- [ ] 8.7 Implement the Profile Creation step (slimmed-down editor: Name, Runtime, Resources, Kubernetes toggle) with a "Create & Start" primary action
-- [ ] 8.8 Implement progress view with the active operation label; advance to success when profile reaches `.running`
-- [ ] 8.9 Implement error state with retry (form data preserved) and the success state with "Open Workspace" + "View Logs"
-- [ ] 8.10 On success, write the flag and dismiss the onboarding window; open the main window to Overview
-- [ ] 8.11 Add "Run onboarding again" and "Re-run dependency check" actions to Settings > Advanced
-- [ ] 8.12 Add XCTest for flag persistence, each step's transitions, and the "Run again" flow
+- [x] 8.1 Add a new `Window` scene to `ColimaStackApp` for `OnboardingWindow`; suppress the main window on first run
+- [x] 8.2 Implement first-run detection via `UserDefaults` flag `colimastack.didCompleteOnboarding`
+- [x] 8.3 Implement the Welcome step (brand mark, value prop, Get Started, Skip onboarding)
+- [x] 8.4 Implement the Dependency Check step using existing `ToolCheck`; per-tool row with install/locate actions
+- [x] 8.5 Implement the "Install with Homebrew" popover that shows the `brew install …` command and a Copy action
+- [x] 8.6 Implement the "Locate manually…" file picker for `limactl`
+- [x] 8.7 Implement the Profile Creation step (slimmed-down editor: Name, Runtime, Resources, Kubernetes toggle) with a "Create & Start" primary action
+- [x] 8.8 Implement progress view with the active operation label; advance to success when profile reaches `.running`
+- [x] 8.9 Implement error state with retry (form data preserved) and the success state with "Open Workspace" + "View Logs"
+- [x] 8.10 On success, write the flag and dismiss the onboarding window; open the main window to Overview
+- [x] 8.11 Add "Run onboarding again" and "Re-run dependency check" actions to Settings > Advanced
+- [x] 8.12 Add XCTest for flag persistence, each step's transitions, and the "Run again" flow
 
 ## 9. Empty states pass
 

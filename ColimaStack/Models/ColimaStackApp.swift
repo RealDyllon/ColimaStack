@@ -89,6 +89,13 @@ struct ColimaStackApp: App {
             SettingsWindowView()
                 .environmentObject(appState)
         }
+
+        Window("Welcome to ColimaStack", id: "onboarding") {
+            OnboardingView()
+                .environmentObject(appState)
+        }
+        .defaultSize(width: 720, height: 520)
+        .windowResizability(.contentSize)
     }
 
     private var menuBarExtraIsInserted: Binding<Bool> {
