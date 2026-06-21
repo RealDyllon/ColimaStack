@@ -72,6 +72,13 @@ final class AppState: ObservableObject {
     }
     @Published var connectionStatus = RuntimeConnectionStatus()
     @Published var hasCompletedDiagnostics = false
+    @Published var defaultTableDensity: TableDensity = .standard {
+        didSet {
+            guard oldValue != defaultTableDensity else { return }
+            userDefaults?.set(defaultTableDensity.rawValue, forKey: DefaultsKey.tableDensity)
+        }
+    }
+    @Published var tableColumnCustomization: TableColumnCustomization = .init()
 
     private let colima: ColimaControlling
     private let backend: BackendSnapshotProviding?
@@ -114,6 +121,10 @@ final class AppState: ObservableObject {
         }
         if userDefaults?.object(forKey: DefaultsKey.useEventBus) != nil {
             self.useEventBus = userDefaults?.bool(forKey: DefaultsKey.useEventBus) ?? true
+        }
+        if let rawDensity = userDefaults?.string(forKey: DefaultsKey.tableDensity),
+           let density = TableDensity(rawValue: rawDensity) {
+            self.defaultTableDensity = density
         }
         let persistedProfileID = userDefaults?.string(forKey: DefaultsKey.selectedProfileID)
         self.selectedProfileID = persistedProfileID.flatMap { id in profiles.contains(where: { $0.id == id }) ? id : nil } ?? profiles.first?.id
@@ -885,6 +896,7 @@ private enum DefaultsKey {
     static let autoRefreshFrequency = "autoRefreshFrequency"
     static let useStreamingCommandOutput = "useStreamingCommandOutput"
     static let useEventBus = "useEventBus"
+    static let tableDensity = "tableDensity"
 }
 
 struct AppError: Identifiable, Equatable {

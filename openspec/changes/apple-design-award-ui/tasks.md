@@ -46,20 +46,20 @@
 
 ## 3. Data tables
 
-- [ ] 3.1 Implement `TableContext` view modifier that wires a `Table` to a `Set<ResourceID>` selection, a density setting, and the contextual action bar
-- [ ] 3.2 Implement `TableContextualActionBar` (N selected, primary actions, dismissable) consuming `ToolbarActionButton`s
-- [ ] 3.3 Implement `TableDensity` (standard, compact) and the corresponding `defaultTableDensity` in `AppState`
-- [ ] 3.4 Implement `TableColumnCustomization` persistence per-resource in `AppState` (default column set + visibility + order)
-- [ ] 3.5 Migrate `ContainersScreen` to `Table` with columns (Name, Image, State, Status, Ports, Created), `sortUsing` comparators, selection, contextual action bar, row context menu (Start/Stop/Restart/Delete/Copy ID/Copy Image/Copy Ports/Open in Browser/Inspect/Logs)
-- [ ] 3.6 Migrate `ImagesScreen` to `Table` (Repository, Tag, Image ID, Size, Created, In Use By)
-- [ ] 3.7 Migrate `VolumesScreen`'s runtime-volumes list to `Table` (Name, Driver, Scope, Mountpoint, Size)
-- [ ] 3.8 Migrate `NetworksScreen`'s runtime-networks list to `Table` (Name, Driver, Scope, Internal, IPv6, ID)
-- [ ] 3.9 Migrate `KubernetesWorkloadsScreen` Pods list to `Table` (Name, Namespace, Node, Phase, Ready, Restarts, Age)
-- [ ] 3.10 Migrate `KubernetesWorkloadsScreen` Deployments list to `Table` (Name, Namespace, Ready, Updated, Available, Age)
-- [ ] 3.11 Migrate `KubernetesServicesScreen` Services list to `Table` (Name, Namespace, Type, Cluster IP, Ports, Age)
-- [ ] 3.12 Remove `RecordList` and `RecordRow` from `WorkspaceComponents.swift`; ensure no remaining references
-- [ ] 3.13 Implement `View > Table Density` menu command that toggles density; persist the choice
-- [ ] 3.14 Add XCTest covering column sort, multi-select, ⌘A, copy-with-context, contextual action bar visibility
+- [x] 3.1 Implement `TableContext` view modifier that wires a `Table` to a `Set<ResourceID>` selection, a density setting, and the contextual action bar
+- [x] 3.2 Implement `TableContextualActionBar` (N selected, primary actions, dismissable) consuming `ToolbarActionButton`s
+- [x] 3.3 Implement `TableDensity` (standard, compact) and the corresponding `defaultTableDensity` in `AppState`
+- [x] 3.4 Implement `TableColumnCustomization` persistence per-resource in `AppState` (default column set + visibility + order)
+- [x] 3.5 Migrate `ContainersScreen` to `Table` with columns (Name, Image, State, Status, Ports, Created), `sortUsing` comparators, selection, contextual action bar, row context menu (Start/Stop/Restart/Delete/Copy ID/Copy Image/Copy Ports/Open in Browser/Inspect/Logs)
+- [x] 3.6 Migrate `ImagesScreen` to `Table` (Repository, Tag, Image ID, Size, Created, In Use By)
+- [x] 3.7 Migrate `VolumesScreen`'s runtime-volumes list to `Table` (Name, Driver, Scope, Mountpoint, Size)
+- [x] 3.8 Migrate `NetworksScreen`'s runtime-networks list to `Table` (Name, Driver, Scope, Internal, IPv6, ID)
+- [x] 3.9 Migrate `KubernetesWorkloadsScreen` Pods list to `Table` (Name, Namespace, Node, Phase, Ready, Restarts, Age)
+- [x] 3.10 Migrate `KubernetesWorkloadsScreen` Deployments list to `Table` (Name, Namespace, Ready, Updated, Available, Age)
+- [x] 3.11 Migrate `KubernetesServicesScreen` Services list to `Table` (Name, Namespace, Type, Cluster IP, Ports, Age)
+- [x] 3.12 Remove `RecordList` and `RecordRow` from `WorkspaceComponents.swift`; ensure no remaining references
+- [x] 3.13 Implement `View > Table Density` menu command that toggles density; persist the choice
+- [x] 3.14 Add XCTest covering column sort, multi-select, ⌘A, copy-with-context, contextual action bar visibility
 
 ## 4. Profile editor
 

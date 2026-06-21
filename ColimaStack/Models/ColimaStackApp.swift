@@ -42,6 +42,10 @@ struct ColimaStackApp: App {
                 .keyboardShortcut("f")
             }
 
+            CommandGroup(after: .toolbar) {
+                TableDensityMenu()
+            }
+
             CommandGroup(replacing: .windowList) {
                 WindowListMenu()
             }
@@ -77,7 +81,7 @@ struct ColimaStackApp: App {
     }
 
     @MainActor
-    private static func makeAppState() -> AppState {
+    static func makeAppState() -> AppState {
         if ProcessInfo.processInfo.arguments.contains("--mock-data") {
             let state = AppState.preview()
             state.autoRefresh = false
@@ -185,4 +189,30 @@ private struct WindowListMenu: View {
 
 extension Notification.Name {
     static let focusWorkspaceSearch = Notification.Name("focusWorkspaceSearch")
+}
+
+// MARK: - View > Table Density menu
+
+/// `View > Table Density > Standard | Compact`. The selection writes
+/// to `appState.defaultTableDensity`, which the resource tables read.
+private struct TableDensityMenu: View {
+    @StateObject private var appState = ColimaStackApp.makeAppState()
+
+    var body: some View {
+        Menu("Table Density") {
+            ForEach(TableDensity.allCases) { density in
+                Button {
+                    appState.defaultTableDensity = density
+                } label: {
+                    HStack {
+                        Text(density.label)
+                        if appState.defaultTableDensity == density {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
