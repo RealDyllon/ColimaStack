@@ -101,6 +101,9 @@ final class AppState: ObservableObject {
     private var currentCommandTask: Task<Void, Never>?
     private var currentCommandCancellation: ProcessCancellation?
     private var toolCheckTask: Task<Void, Never>?
+    /// Container lifecycle service. Owned by `AppState` so the
+    /// notification subscribers outlive the per-screen views.
+    public var containerService: ContainerService!
 
     init(
         colima: ColimaControlling,
@@ -114,6 +117,7 @@ final class AppState: ObservableObject {
         self.searchIndexer = searchIndexer ?? BackendSearchIndexer()
         self.userDefaults = userDefaults
         self.profiles = profiles
+        self.containerService = nil
         if let rawSection = userDefaults?.string(forKey: DefaultsKey.selectedSection),
            let section = WorkspaceRoute(rawValue: rawSection) {
             self.selectedSection = section
@@ -138,6 +142,9 @@ final class AppState: ObservableObject {
         let persistedProfileID = userDefaults?.string(forKey: DefaultsKey.selectedProfileID)
         self.selectedProfileID = persistedProfileID.flatMap { id in profiles.contains(where: { $0.id == id }) ? id : nil } ?? profiles.first?.id
         rebuildSearchIndex()
+        // Now that all stored properties are initialized, swap the
+        // placeholder for a fully-wired ContainerService.
+        self.containerService = ContainerService(appState: self)
     }
 
     static func live() -> AppState {

@@ -20,6 +20,8 @@ struct WorkspaceChrome<Detail: View>: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.openSettings) private var openSettings
     @Binding var searchText: String
+    @State private var inspectContainerID: String?
+    @State private var logsContainerID: String?
     let detail: () -> Detail
 
     init(searchText: Binding<String>, @ViewBuilder detail: @escaping () -> Detail) {
@@ -44,10 +46,28 @@ struct WorkspaceChrome<Detail: View>: View {
                 .environmentObject(appState)
                 .frame(minWidth: 720, minHeight: 760)
         }
+        .sheet(item: Binding(
+            get: { inspectContainerID.map(IdentifiedString.init) },
+            set: { inspectContainerID = $0?.value }
+        )) { identified in
+            ContainerInspectSheet(containerID: identified.value)
+        }
+        .sheet(item: Binding(
+            get: { logsContainerID.map(IdentifiedString.init) },
+            set: { logsContainerID = $0?.value }
+        )) { identified in
+            ContainerLogsSheet(containerID: identified.value)
+        }
         .alert(item: $appState.presentedError) { error in
             Alert(title: Text("ColimaStack"), message: Text(error.message), dismissButton: .default(Text("OK")))
         }
         .background(WindowAccessor())
+        .onReceive(NotificationCenter.default.publisher(for: .presentContainerInspect)) { note in
+            if let id = note.object as? String { inspectContainerID = id }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .presentContainerLogs)) { note in
+            if let id = note.object as? String { logsContainerID = id }
+        }
     }
 
     @ToolbarContentBuilder
@@ -191,6 +211,12 @@ struct WorkspaceChrome<Detail: View>: View {
 
 extension Notification.Name {
     static let workspaceChromeRequestDeleteConfirmation = Notification.Name("workspaceChromeRequestDeleteConfirmation")
+}
+
+/// Wraps a String as Identifiable for use with `.sheet(item:)`.
+struct IdentifiedString: Identifiable {
+    let value: String
+    var id: String { value }
 }
 
 // MARK: - Sidebar

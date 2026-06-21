@@ -105,14 +105,14 @@
 
 ## 7. Container lifecycle
 
-- [ ] 7.1 Implement `ContainerService` exposing async `start`, `stop`, `restart`, `delete`, `inspect`, `logs` on top of `CommandRunService` and `StreamingProcessRunner`
-- [ ] 7.2 Record every container-lifecycle command as a `CommandLogEntry` in `AppState` with command, status, output, timing
-- [ ] 7.3 Surface container row actions in the Containers table (context menu, contextual action bar, leading context-menu button)
-- [ ] 7.4 Implement Delete confirmation dialog (one container, multi-container) with destructive + cancel buttons
-- [ ] 7.5 Implement the `InspectPanel` (sheet) with metadata, configuration, networking, mounts, raw JSON sections; ⌘F search
-- [ ] 7.6 Implement the Logs view (sheet) backed by `TerminalLogView` and `StreamingProcessRunner`; "tailing" indicator, auto-scroll, jump-to-live, ⌘F search, copy-all, line-number toggle
-- [ ] 7.7 Ensure container state changes from CLI/UI update the table within 500ms via the event bus as a delta (not a full reload)
-- [ ] 7.8 Add XCTest for the destructive dialog, the inspect panel, the logs streaming, and the row-action availability by state
+- [x] 7.1 Implement `ContainerService` exposing async `start`, `stop`, `restart`, `delete`, `inspect`, `logs` on top of `CommandRunService` and `StreamingProcessRunner`
+- [x] 7.2 Record every container-lifecycle command as a `CommandLogEntry` in `AppState` with command, status, output, timing
+- [x] 7.3 Surface container row actions in the Containers table (context menu, contextual action bar, leading context-menu button)
+- [x] 7.4 Implement Delete confirmation dialog (one container, multi-container) with destructive + cancel buttons
+- [x] 7.5 Implement the `InspectPanel` (sheet) with metadata, configuration, networking, mounts, raw JSON sections; ⌘F search
+- [x] 7.6 Implement the Logs view (sheet) backed by `TerminalLogView` and `StreamingProcessRunner`; "tailing" indicator, auto-scroll, jump-to-live, ⌘F search, copy-all, line-number toggle
+- [x] 7.7 Ensure container state changes from CLI/UI update the table within 500ms via the event bus as a delta (not a full reload)
+- [x] 7.8 Add XCTest for the destructive dialog, the inspect panel, the logs streaming, and the row-action availability by state
 
 ## 8. Onboarding
 
