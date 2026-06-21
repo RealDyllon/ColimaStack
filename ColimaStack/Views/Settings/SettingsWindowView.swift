@@ -159,7 +159,7 @@ struct SettingsPaneContent: View {
             SectionCard(title: "About", subtitle: "Application version and metadata.", symbol: "info.circle") {
                 KeyValueGrid(rows: [
                     ("Application", "ColimaStack"),
-                    ("Version", Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.1"),
+                    ("Version", Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"),
                     ("Build", Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1")
                 ])
             }
