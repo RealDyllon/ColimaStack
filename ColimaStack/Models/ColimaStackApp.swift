@@ -54,6 +54,24 @@ struct ColimaStackApp: App {
                 Divider()
                 WindowListMenu()
             }
+
+            // ⌘1–⌘5: jump to settings category. Posted as notifications
+            // so the open settings window (if any) can change its
+            // selected pane. The settings window listens to
+            // settingsPaneShortcut notifications with the pane name
+            // in userInfo.
+            CommandGroup(after: .sidebar) {
+                ForEach(Array(SettingsPane.allCases.enumerated()), id: \.element.id) { index, pane in
+                    Button("Show \(pane.title) Settings") {
+                        NotificationCenter.default.post(
+                            name: .settingsPaneShortcut,
+                            object: nil,
+                            userInfo: ["pane": pane.rawValue]
+                        )
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+                }
+            }
         }
 
         MenuBarExtra(isInserted: menuBarExtraIsInserted) {
@@ -189,6 +207,7 @@ private struct WindowListMenu: View {
 
 extension Notification.Name {
     static let focusWorkspaceSearch = Notification.Name("focusWorkspaceSearch")
+    static let settingsPaneShortcut = Notification.Name("settingsPaneShortcut")
 }
 
 // MARK: - View > Table Density menu

@@ -78,17 +78,17 @@
 
 ## 5. Settings window
 
-- [ ] 5.1 Rewrite `SettingsWindowView` as a `NavigationSplitView` with a 200pt sidebar `List` of categories and the right pane
-- [ ] 5.2 Implement `SettingsPane` selection persistence in `AppState`
-- [ ] 5.3 Rewrite `SettingsPaneContent` to render cards instead of `Form` sections
-- [ ] 5.4 Compose the General pane from Refresh / Selected / About cards using `SectionCard` and `KeyValueGrid`
-- [ ] 5.5 Compose the Kubernetes pane from Status / Actions cards
-- [ ] 5.6 Compose the Networking pane from a single Endpoints card with copy affordances per row
-- [ ] 5.7 Compose the Integrations pane from a single Toolchain card using a redesigned `ToolRow` (icon, name, version, status, copy path)
-- [ ] 5.8 Compose the Advanced pane from Profile actions / Diagnostics cards
-- [ ] 5.9 Wire ⌘1–⌘5 to jump to the matching category; ensure focus moves to the first control
-- [ ] 5.10 Implement destructive-action confirmation for Reset Configuration
-- [ ] 5.11 Add the window 720×560 default and 600×480 min size
+- [x] 5.1 Rewrite `SettingsWindowView` as a `NavigationSplitView` with a 200pt sidebar `List` of categories and the right pane
+- [x] 5.2 Implement `SettingsPane` selection persistence in `AppState`
+- [x] 5.3 Rewrite `SettingsPaneContent` to render cards instead of `Form` sections
+- [x] 5.4 Compose the General pane from Refresh / Selected / About cards using `SectionCard` and `KeyValueGrid`
+- [x] 5.5 Compose the Kubernetes pane from Status / Actions cards
+- [x] 5.6 Compose the Networking pane from a single Endpoints card with copy affordances per row
+- [x] 5.7 Compose the Integrations pane from a single Toolchain card using a redesigned `ToolRow` (icon, name, version, status, copy path)
+- [x] 5.8 Compose the Advanced pane from Profile actions / Diagnostics cards
+- [x] 5.9 Wire ⌘1–⌘5 to jump to the matching category; ensure focus moves to the first control
+- [x] 5.10 Implement destructive-action confirmation for Reset Configuration
+- [x] 5.11 Add the window 720×560 default and 600×480 min size
 
 ## 6. Terminal log
 
