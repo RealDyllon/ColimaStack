@@ -3,7 +3,7 @@ title: Architecture
 description: How ColimaStack connects the macOS app, Colima CLI, Docker CLI, kubectl, and local Colima files.
 ---
 
-ColimaStack is a native macOS GUI backed by local command-line tools and file-backed Colima configuration.
+ColimaStack is a SwiftUI macOS app backed by local command-line tools and selected Colima files.
 
 ## Event-driven control plane
 
@@ -35,23 +35,19 @@ The `RuntimeEventEngine` owns the event bus lifecycle at the application scope (
 The app still calls the Colima CLI directly for profile lifecycle and configuration-oriented operations:
 
 - `colima list --json`
-- `colima status --json`
-- `colima start`
-- `colima stop`
-- `colima restart`
-- `colima delete`
-- `colima update`
-- `colima kubernetes start`
-- `colima kubernetes stop`
-- `colima template`
-- `colima ssh-config`
-- `colima ssh`
+- `COLIMA_PROFILE=<profile> colima status --json`
+- `COLIMA_PROFILE=<profile> colima start [flags]`
+- `COLIMA_PROFILE=<profile> colima stop`
+- `COLIMA_PROFILE=<profile> colima restart`
+- `COLIMA_PROFILE=<profile> colima delete --force`
+- `COLIMA_PROFILE=<profile> colima update`
+- `COLIMA_PROFILE=<profile> colima kubernetes start|stop`
 
-Most profile-scoped operations use the `COLIMA_PROFILE` environment variable.
+See [Command API](/reference/command-api/) for the full command list and flags.
 
 ## Docker inventory
 
-Docker resources are read through the Docker CLI using JSON output where available:
+Docker resources are read through the Docker CLI. When the selected profile exposes a context, commands are prefixed with `docker --context <context>`.
 
 - `docker ps -a --format json`
 - `docker images --format json`
@@ -63,7 +59,7 @@ Docker resources are read through the Docker CLI using JSON output where availab
 
 ## Kubernetes inventory
 
-Kubernetes resources are read through `kubectl`:
+Kubernetes resources are read through `kubectl`. When the selected profile exposes a Kubernetes context, commands are prefixed with `kubectl --context <context>`.
 
 - `kubectl get nodes -o json`
 - `kubectl get namespaces -o json`
@@ -76,11 +72,12 @@ Kubernetes resources are read through `kubectl`:
 
 ## File-backed documents
 
-ColimaStack also reads selected files from Colima state:
+ColimaStack reads selected files from `$COLIMA_HOME` or `~/.colima`:
 
 - profile config: `$COLIMA_HOME/<profile>/colima.yaml`
 - template: `$COLIMA_HOME/_templates/default.yaml`
 - SSH config: `$COLIMA_HOME/ssh_config`
+- Lima override: `$COLIMA_HOME/_lima/_config/override.yaml`
 - daemon log: `$COLIMA_HOME/<profile>/daemon/daemon.log`
 
 File changes are detected via `DispatchSource` vnode sources rather than periodic re-reads.

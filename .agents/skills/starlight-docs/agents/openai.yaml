@@ -1,0 +1,4 @@
+interface:
+  display_name: "Starlight Docs"
+  short_description: "Author Starlight MDX docs pages"
+  default_prompt: "Use $starlight-docs to draft a Starlight MDX docs page with native components."

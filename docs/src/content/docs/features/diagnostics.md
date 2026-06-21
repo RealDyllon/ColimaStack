@@ -1,27 +1,58 @@
 ---
 title: Diagnostics
-description: Understand dependency checks and runtime health in ColimaStack.
+description: Check local tool availability, Colima runtime state, Docker context health, and Kubernetes context.
 ---
 
-Diagnostics answer a simple question: can ColimaStack control and inspect the selected local runtime?
+`Diagnostics` answers whether ColimaStack can control and inspect the selected local runtime.
 
-## Tool checks
+## What checks run
 
-The app checks:
+Tool checks:
 
-- `colima`
-- `docker`
-- `kubectl`
-- `limactl`
+- `colima version`
+- `docker version --format "{{.Client.Version}}"`
+- `kubectl version --client=true -o json`
+- `limactl --version`
 
-Each check reports whether the tool is available, missing, or returned an error.
+Runtime checks:
 
-## Runtime checks
+- selected profile `colima status --json`
+- Docker active context with `docker context show`
+- Docker server version against the expected Colima context when the selected profile is running
+- Kubernetes current context with `kubectl config current-context` when `kubectl` is available
 
-Colima status is read with `colima status --json` where possible. A stopped profile is treated as a normal state, not a fatal error.
+## What data is collected
 
-Docker availability is checked against the expected Colima context so an unrelated active Docker context does not hide a local setup problem.
+The screen shows:
 
-## Kubernetes context
+- tool availability, path, and version or error
+- Colima profile name and state
+- Colima runtime error text when available
+- Docker available yes/no
+- Docker context and version
+- Docker error text
+- diagnostic messages such as Kubernetes context availability
 
-If `kubectl` is available, diagnostics include the current Kubernetes context or the error returned by `kubectl config current-context`.
+## Available actions
+
+- `Run Checks`: refreshes diagnostics and runtime data.
+- Menu bar `Copy Diagnostics Summary`: copies a short summary with profile, Colima state, Docker availability/context, resource counts, and issue count.
+
+Copy uses the visible summary value. Redaction happens before data is displayed, not as an extra pasteboard step.
+
+## Empty states
+
+- `No tool checks captured yet`: diagnostics have not run.
+- `No diagnostic messages`: no additional context messages were collected.
+- Missing Colima clears profile/runtime data and shows a `Colima is not installed` issue with a `brew install colima` recovery suggestion.
+
+## Redaction
+
+Diagnostics text is redacted for common secrets, tokens, passwords, credentials, and authorization patterns. See [Security & Privacy](/security-privacy/) for the exact scope and limitations.
+
+## Common fixes
+
+- Install missing tools from [Install](/install/).
+- Start the selected profile in [Profiles](/profiles/overview/).
+- Check exact command shapes in [Command API](/reference/command-api/).
+- Use [Compatibility](/compatibility/) to confirm supported macOS and optional feature requirements.

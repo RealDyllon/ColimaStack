@@ -1,37 +1,55 @@
 ---
 title: Settings
-description: ColimaStack profile and app settings that affect runtime behavior.
+description: App settings panes and profile actions exposed by ColimaStack.
 ---
 
-Settings are split between app preferences and Colima profile configuration.
+Settings are available from the app menu bar and main app support area. They show app state and selected-profile controls; detailed profile editing happens in the profile editor.
 
-## App preferences
+## General
 
-Current app-level behavior includes:
+`General` includes:
 
-- selected workspace section
+- `Auto refresh`
+- `Auto refresh frequency`
 - selected profile
-- automatic refresh
-- refresh frequency
-- command history retention
-- profile log display
+- active section
+- refresh state
 
-## Profile configuration
+Auto-refresh frequencies are `Faster`, `Fast`, and `Normal`.
 
-Profile settings map to `colima start` flags and Colima configuration files:
+## Kubernetes
 
-- runtime: Docker, containerd, or Incus
-- VM type: QEMU, Virtualization.framework, or Krunkit
-- architecture: host default, Apple Silicon, or Intel
-- CPU, memory, and disk
-- mount type and mount list
-- DNS resolvers
-- network mode and network interface
-- port forwarder
-- Kubernetes enablement and version
-- k3s arguments and listen port
-- Rosetta and nested virtualization options where supported
+`Kubernetes` includes:
 
-## Editing configuration
+- enabled yes/no
+- version
+- context
+- `Enable Kubernetes` / `Disable Kubernetes`
+- `Edit Profile`
 
-ColimaStack can open the profile editor and can also delegate to Colima's editor-backed flows for template and profile configuration.
+Kubernetes actions require a selected profile and are disabled while another operation is active.
+
+## Networking
+
+`Networking` shows:
+
+- Docker context
+- address
+- socket
+- mount type
+
+## Integrations
+
+`Integrations` shows the Diagnostics tool checks for `colima`, `docker`, `kubectl`, and `limactl`.
+
+## Advanced
+
+`Advanced` includes:
+
+- `Update Profile`
+- `Restart Profile`
+- command history entry count
+- logs captured yes/no
+- diagnostics message count
+
+For profile editor fields such as runtime, VM type, architecture, mounts, networking, Rosetta, and nested virtualization, see [Profile Configuration](/profiles/configuration/).

@@ -27,29 +27,26 @@ export default defineConfig({
           label: 'Get Started',
           items: [
             'index',
-            'features',
-            'quick-start',
             'install',
-            'faq',
-            'roadmap'
+            'quick-start',
+            'compatibility',
+            'faq'
           ]
         },
         {
-          label: 'Learn More',
+          label: 'Profiles',
           items: [
-            'architecture',
-            'settings',
-            'efficiency',
-            'troubleshooting'
+            'profiles/overview',
+            'profiles/configuration',
+            'profiles/ssh',
+            'profiles/files'
           ]
         },
         {
-          label: 'Features',
+          label: 'Runtime',
           items: [
-            'features/diagnostics',
-            'features/activity',
-            'features/search',
-            'features/menu-bar'
+            'runtime/overview',
+            'runtime/monitor'
           ]
         },
         {
@@ -70,12 +67,18 @@ export default defineConfig({
           ]
         },
         {
-          label: 'Profiles',
+          label: 'Features',
           items: [
-            'profiles/overview',
-            'profiles/configuration',
-            'profiles/ssh',
-            'profiles/files'
+            'features/menu-bar',
+            'features/search',
+            'features/diagnostics',
+            'features/activity'
+          ]
+        },
+        {
+          label: 'Security',
+          items: [
+            'security-privacy'
           ]
         },
         {
@@ -90,8 +93,18 @@ export default defineConfig({
           label: 'Reference',
           items: [
             'reference/command-api',
-            'reference/release-readiness',
-            'reference/docs-plan'
+            'troubleshooting',
+            'architecture',
+            'settings'
+          ]
+        },
+        {
+          label: 'Contributor',
+          items: [
+            'contributing/release-readiness',
+            'contributing/docs-plan',
+            'contributing/screenshot-checklist',
+            'roadmap'
           ]
         }
       ]

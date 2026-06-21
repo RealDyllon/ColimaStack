@@ -217,6 +217,7 @@ nonisolated struct LiveProcessRunner: CancellableProcessRunner {
         let stdoutBuffer = ProcessOutputBuffer(limit: outputLimitBytes)
         let stderrBuffer = ProcessOutputBuffer(limit: outputLimitBytes)
         let stdinPipe = request.standardInput.map { _ in Pipe() }
+        let outputGroup = DispatchGroup()
         _ = Self.ignoreSIGPIPE
 
         process.executableURL = request.executableURL
@@ -227,20 +228,6 @@ nonisolated struct LiveProcessRunner: CancellableProcessRunner {
         process.standardError = stderrPipe
         if let stdinPipe {
             process.standardInput = stdinPipe
-        }
-        stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
-            stdoutBuffer.append(data)
-        }
-        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
-            stderrBuffer.append(data)
-        }
-        defer {
-            stdoutPipe.fileHandleForReading.readabilityHandler = nil
-            stderrPipe.fileHandleForReading.readabilityHandler = nil
         }
 
         let termination = request.timeout.map { _ in DispatchSemaphore(value: 0) }
@@ -265,6 +252,11 @@ nonisolated struct LiveProcessRunner: CancellableProcessRunner {
                 executablePath: request.executableURL.path,
                 underlyingMessage: error.localizedDescription
             )
+        }
+        readOutput(stdoutPipe.fileHandleForReading, into: stdoutBuffer, group: outputGroup)
+        readOutput(stderrPipe.fileHandleForReading, into: stderrBuffer, group: outputGroup)
+        defer {
+            outputGroup.wait()
         }
 
         if let input = request.standardInput, let stdinPipe {
@@ -301,12 +293,7 @@ nonisolated struct LiveProcessRunner: CancellableProcessRunner {
             throw CancellationError()
         }
 
-        stdoutPipe.fileHandleForReading.readabilityHandler = nil
-        stderrPipe.fileHandleForReading.readabilityHandler = nil
-        let remainingStdout = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let remainingStderr = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-        stdoutBuffer.append(remainingStdout)
-        stderrBuffer.append(remainingStderr)
+        outputGroup.wait()
         let stdoutSnapshot = stdoutBuffer.snapshot()
         let stderrSnapshot = stderrBuffer.snapshot()
 
@@ -340,6 +327,18 @@ nonisolated struct LiveProcessRunner: CancellableProcessRunner {
             throw ProcessRunnerError.invalidUTF8(stream: stream, executablePath: executablePath)
         }
         return value
+    }
+
+    private func readOutput(_ handle: FileHandle, into buffer: ProcessOutputBuffer, group: DispatchGroup) {
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            defer { group.leave() }
+            while true {
+                let data = handle.readData(ofLength: 4096)
+                guard !data.isEmpty else { return }
+                buffer.append(data)
+            }
+        }
     }
 }
 

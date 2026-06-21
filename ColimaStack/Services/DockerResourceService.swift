@@ -5,6 +5,110 @@ protocol DockerResourceProviding {
     func snapshot(context: String?) async throws -> DockerResourceSnapshot
 }
 
+nonisolated protocol DockerContainerCommandControlling {
+    func start(containerID: String, context: String?) async throws -> ManagedCommandRun
+    func stop(containerID: String, context: String?) async throws -> ManagedCommandRun
+    func restart(containerID: String, context: String?) async throws -> ManagedCommandRun
+    func pause(containerID: String, context: String?) async throws -> ManagedCommandRun
+    func resume(containerID: String, context: String?) async throws -> ManagedCommandRun
+    func kill(containerID: String, context: String?) async throws -> ManagedCommandRun
+    func remove(containerID: String, context: String?) async throws -> ManagedCommandRun
+    func logs(containerID: String, context: String?, timestamps: Bool, tail: Int) async throws -> String
+    func inspect(containerID: String, context: String?) async throws -> String
+    func terminalCommand(containerID: String, context: String?, shell: String) -> String
+}
+
+nonisolated struct LiveDockerContainerCommandService: DockerContainerCommandControlling {
+    private let commandRunner: CommandRunProviding
+
+    init(commandRunner: CommandRunProviding = LiveCommandRunService()) {
+        self.commandRunner = commandRunner
+    }
+
+    func start(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try await run(context: context, arguments: ["start", containerID], purpose: "Start container \(containerID)")
+    }
+
+    func stop(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try await run(context: context, arguments: ["stop", containerID], purpose: "Stop container \(containerID)")
+    }
+
+    func restart(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try await run(context: context, arguments: ["restart", containerID], purpose: "Restart container \(containerID)")
+    }
+
+    func pause(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try await run(context: context, arguments: ["pause", containerID], purpose: "Pause container \(containerID)")
+    }
+
+    func resume(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try await run(context: context, arguments: ["unpause", containerID], purpose: "Resume container \(containerID)")
+    }
+
+    func kill(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try await run(context: context, arguments: ["kill", containerID], purpose: "Kill container \(containerID)")
+    }
+
+    func remove(containerID: String, context: String?) async throws -> ManagedCommandRun {
+        try await run(context: context, arguments: ["rm", containerID], purpose: "Delete container \(containerID)")
+    }
+
+    func logs(containerID: String, context: String?, timestamps: Bool, tail: Int) async throws -> String {
+        var arguments = ["logs"]
+        if timestamps {
+            arguments.append("--timestamps")
+        }
+        arguments += ["--tail", "\(tail)", containerID]
+        let run = try await run(context: context, arguments: arguments, purpose: "Fetch container logs \(containerID)")
+        guard run.succeeded else {
+            throw DockerContainerCommandError(run: run)
+        }
+        return run.standardOutput
+    }
+
+    func inspect(containerID: String, context: String?) async throws -> String {
+        let run = try await run(context: context, arguments: ["inspect", containerID], purpose: "Inspect container \(containerID)")
+        guard run.succeeded else {
+            throw DockerContainerCommandError(run: run)
+        }
+        return run.standardOutput
+    }
+
+    func terminalCommand(containerID: String, context: String?, shell: String = "/bin/sh") -> String {
+        (["docker"] + dockerArguments(context: context, subcommand: ["exec", "-it", containerID, shell]))
+            .joined(separator: " ")
+    }
+
+    private func run(context: String?, arguments: [String], purpose: String) async throws -> ManagedCommandRun {
+        let run = try await commandRunner.run(
+            ManagedCommandRequest(
+                toolName: "docker",
+                arguments: dockerArguments(context: context, subcommand: arguments),
+                timeout: 30,
+                purpose: purpose
+            )
+        )
+        guard run.succeeded else {
+            throw DockerContainerCommandError(run: run)
+        }
+        return run
+    }
+
+    private func dockerArguments(context: String?, subcommand: [String]) -> [String] {
+        guard let context, !context.isEmpty else { return subcommand }
+        return ["--context", context] + subcommand
+    }
+}
+
+struct DockerContainerCommandError: LocalizedError {
+    var run: ManagedCommandRun
+
+    var errorDescription: String? {
+        run.combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+            ?? "Docker command exited with status \(run.terminationStatus)."
+    }
+}
+
 struct LiveDockerResourceService: DockerResourceProviding {
     private let commandRunner: CommandRunProviding
 

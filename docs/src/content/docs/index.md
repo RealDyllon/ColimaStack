@@ -1,57 +1,57 @@
 ---
 title: ColimaStack
-description: ColimaStack is a native macOS control center for Colima profiles, Docker resources, and Kubernetes development clusters.
+description: ColimaStack is a macOS app for Colima profiles, Docker inventory, Kubernetes visibility, diagnostics, and command feedback.
 template: splash
 sidebar:
   label: Overview
 hero:
   title: '<img class="landing-wordmark" src="/brand/colimastack-logo-wordmark.png" alt="ColimaStack" />'
-  tagline: A native macOS workspace for Colima profiles, Docker inventory, Kubernetes visibility, diagnostics, and command feedback.
+  tagline: A macOS workspace for local Colima profiles, Docker inventory, Kubernetes visibility, diagnostics, and command feedback.
   image:
     html: '<img class="landing-hero-image" src="/screenshots/overview.png" alt="ColimaStack overview dashboard showing profile status, runtime health, and backend resources." />'
   actions:
     - text: Start with Quick Start
       link: /quick-start/
       variant: primary
-    - text: Browse Features
-      link: /features/
+    - text: Install
+      link: /install/
       variant: secondary
 ---
 
 <section class="landing-intro">
 
-ColimaStack is built for developers who already trust [Colima](https://github.com/abiosoft/colima) as their local container runtime and want a faster way to see, inspect, and recover their environment. It keeps the Colima CLI as the foundation, then adds a focused product layer for daily profile, Docker, and Kubernetes work.
+ColimaStack is for developers who use [Colima](https://github.com/abiosoft/colima) as their local runtime and want a visible control surface for profiles, Docker resources, Kubernetes state, diagnostics, and recent command output.
 
 </section>
 
 <div class="landing-screens">
-  <img src="/screenshots/containers.png" alt="ColimaStack Docker containers view with status, image, ports, and age columns." />
-  <img src="/screenshots/kubernetes-cluster.png" alt="ColimaStack Kubernetes cluster view with node and namespace health." />
+  <img src="/screenshots/containers.png" alt="ColimaStack Docker containers view with status, image, ports, and state columns." />
+  <img src="/screenshots/kubernetes-cluster.png" alt="ColimaStack Kubernetes cluster view with node and cluster information." />
 </div>
 
-## Built for the local runtime loop
+## What it covers
 
 <div class="landing-grid">
   <article>
-    <h3>Profile-first control</h3>
-    <p>Start, stop, inspect, and switch Colima profiles without turning routine runtime checks into terminal archaeology.</p>
+    <h3>Profiles</h3>
+    <p>Create, select, start, stop, restart, update, edit, and delete local Colima profiles.</p>
   </article>
   <article>
     <h3>Docker inventory</h3>
-    <p>Browse containers, images, volumes, networks, stats, and disk usage for the active Colima context.</p>
+    <p>Read containers, images, volumes, networks, stats, and disk usage from the selected Colima Docker context.</p>
   </article>
   <article>
-    <h3>Kubernetes awareness</h3>
-    <p>Inspect nodes, namespaces, pods, deployments, services, and metrics when Kubernetes is enabled.</p>
+    <h3>Kubernetes views</h3>
+    <p>Inspect nodes, namespaces, pods, deployments, services, and metrics when Kubernetes is enabled on the selected profile.</p>
   </article>
   <article>
-    <h3>Actionable diagnostics</h3>
-    <p>Spot missing or misconfigured <code>colima</code>, <code>docker</code>, <code>kubectl</code>, and <code>limactl</code> tools before they derail the session.</p>
+    <h3>Diagnostics</h3>
+    <p>Check local <code>colima</code>, <code>docker</code>, <code>kubectl</code>, and <code>limactl</code> availability and runtime context errors.</p>
   </article>
 </div>
 
 ## Start here
 
-Use the [Quick Start](/quick-start/) to get oriented, then check [Install](/install/) for dependency setup. If you are evaluating local runtime options, compare ColimaStack with [OrbStack](/compare/orbstack/), [Docker Desktop](/compare/docker-desktop/), and the [Colima CLI](/compare/colima-cli/).
+New users should read [Install](/install/) and [Quick Start](/quick-start/). Existing Colima users can usually open the app, select a profile, start it if needed, and verify resources in [Containers](/docker/containers/).
 
-This documentation reflects the launch surface currently represented in the app and release notes. Some pages document intended launch behavior that still requires final manual smoke testing with a live Colima installation.
+Core references: [Compatibility](/compatibility/), [Profiles](/profiles/overview/), [Monitor](/runtime/monitor/), [Menu Bar](/features/menu-bar/), [Diagnostics](/features/diagnostics/), [Security & Privacy](/security-privacy/), [Command API](/reference/command-api/), and [Troubleshooting](/troubleshooting/).

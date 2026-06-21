@@ -328,7 +328,18 @@ nonisolated struct DockerContainerResource: Identifiable, Hashable, Codable, Sen
         var browserURL: URL? {
             guard hostPort > 0 else { return nil }
             let scheme = containerPort == 443 || hostPort == 443 ? "https" : "http"
-            return URL(string: "\(scheme)://localhost:\(hostPort)")
+            return URL(string: "\(scheme)://\(browserHost):\(hostPort)")
+        }
+
+        private var browserHost: String {
+            let normalized = hostIP.trimmingCharacters(in: .whitespacesAndNewlines)
+            if normalized.isEmpty || normalized == "0.0.0.0" || normalized == "::" {
+                return "localhost"
+            }
+            if normalized.contains(":") && !normalized.hasPrefix("[") {
+                return "[\(normalized)]"
+            }
+            return normalized
         }
     }
 
@@ -374,11 +385,104 @@ nonisolated struct DockerContainerResource: Identifiable, Hashable, Codable, Sen
     }
 
     var health: BackendResourceHealth {
-        let normalized = state.lowercased()
+        let normalized = normalizedState
+        let status = normalizedStatus
+        if status.contains("unhealthy") { return .error }
+        if status.contains("health: starting") { return .warning }
         if normalized == "running" { return .healthy }
         if normalized == "dead" { return .error }
         if normalized == "exited" || normalized == "restarting" || normalized == "paused" { return .warning }
         return .unknown
+    }
+
+    var displayName: String {
+        name.isEmpty ? id : name
+    }
+
+    var normalizedState: String {
+        state.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    var normalizedStatus: String {
+        status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    var composeProject: String? {
+        labels["com.docker.compose.project"]?.nonEmpty
+    }
+
+    var composeService: String? {
+        labels["com.docker.compose.service"]?.nonEmpty
+    }
+
+    var availableActions: Set<DockerContainerAction> {
+        var actions: Set<DockerContainerAction> = [.logs, .inspect, .copyID, .copyImage]
+        if !ports.isEmpty { actions.insert(.copyPorts) }
+        if !portBindings.isEmpty { actions.insert(.openPort) }
+
+        switch normalizedState {
+        case "running":
+            actions.formUnion([.stop, .restart, .pause, .kill, .terminal])
+        case "paused":
+            actions.formUnion([.resume, .restart])
+        case "dead":
+            actions.formUnion([.delete])
+        case "restarting":
+            actions.formUnion([.stop, .kill, .restart])
+        case "exited", "created", "stopped":
+            actions.formUnion([.start, .delete])
+        default:
+            actions.formUnion([.start, .restart, .delete])
+        }
+        return actions
+    }
+}
+
+nonisolated enum DockerContainerAction: String, CaseIterable, Hashable, Codable, Sendable {
+    case start
+    case stop
+    case restart
+    case pause
+    case resume
+    case kill
+    case delete
+    case logs
+    case inspect
+    case terminal
+    case openPort
+    case copyID
+    case copyImage
+    case copyPorts
+}
+
+nonisolated struct DockerComposeContainerGroup: Identifiable, Hashable, Codable, Sendable {
+    var projectName: String
+    var containers: [DockerContainerResource]
+
+    var id: String { projectName }
+
+    var runningCount: Int {
+        containers.filter { $0.normalizedState == "running" }.count
+    }
+
+    var services: [String] {
+        Array(Set(containers.compactMap(\.composeService))).sorted()
+    }
+
+    static func groups(from containers: [DockerContainerResource]) -> [DockerComposeContainerGroup] {
+        Dictionary(grouping: containers.compactMap { container -> (String, DockerContainerResource)? in
+            guard let project = container.composeProject else { return nil }
+            return (project, container)
+        }, by: { $0.0 })
+        .map { project, values in
+            DockerComposeContainerGroup(
+                projectName: project,
+                containers: values.map(\.1).sorted {
+                    $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+                }
+            )
+        }
+        .sorted { $0.projectName.localizedCaseInsensitiveCompare($1.projectName) == .orderedAscending }
     }
 }
 

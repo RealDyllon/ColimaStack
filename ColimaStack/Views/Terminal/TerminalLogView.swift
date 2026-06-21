@@ -77,6 +77,13 @@ public final class LogStreamBuffer: ObservableObject {
     public func clear() {
         lines.removeAll()
     }
+
+    /// Render the current line buffer as a single newline-joined string.
+    /// Used by `AppState.containerLogs` to feed the legacy inspect /
+    /// log sheets that pre-date the streaming `TerminalLogView`.
+    public func renderPlainText() -> String {
+        lines.map(\.text).joined(separator: "\n")
+    }
 }
 
 // MARK: - TerminalLogView (SwiftUI)

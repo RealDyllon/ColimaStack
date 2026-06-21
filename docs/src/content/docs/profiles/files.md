@@ -1,25 +1,30 @@
 ---
 title: Files and Logs
-description: Understand Colima files that ColimaStack reads for profile details.
+description: Local Colima files that ColimaStack reads for profile configuration, SSH, and logs.
 ---
 
-ColimaStack reads a small set of Colima files directly so it can show useful profile details without invoking extra commands.
+ColimaStack reads selected files under Colima home. It does not create a separate remote store for these documents.
 
 ## Paths
 
-Default paths are based on `$COLIMA_HOME`:
+`COLIMA_HOME` is respected when set. Otherwise ColimaStack uses `~/.colima`.
 
-```txt
-$COLIMA_HOME/<profile>/colima.yaml
-$COLIMA_HOME/_templates/default.yaml
-$COLIMA_HOME/ssh_config
-$COLIMA_HOME/<profile>/daemon/daemon.log
-```
+| Purpose | Path |
+| --- | --- |
+| Profile configuration | `$COLIMA_HOME/<profile>/colima.yaml` |
+| Default template | `$COLIMA_HOME/_templates/default.yaml` |
+| SSH config | `$COLIMA_HOME/ssh_config` |
+| Lima override | `$COLIMA_HOME/_lima/_config/override.yaml` |
+| Daemon log | `$COLIMA_HOME/<profile>/daemon/daemon.log` |
 
 ## Configuration
 
-Profile configuration is parsed from `colima.yaml` when available. Stored mounts are hydrated back into profile detail views from this file.
+The selected profile's configuration is parsed to populate editor values and mount rows where available. If the profile configuration file is missing, the app falls back to profile status/default values.
 
 ## Logs
 
-Daemon logs are displayed in the workspace and Activity areas. Very large logs are capped in memory.
+The `Activity` and `Overview` pages show the selected profile's daemon log. If the file is missing, the app shows a message that no Colima daemon log was found at the expected path.
+
+Displayed log text is redacted and capped to the last 200,000 characters. Process stdout/stderr streams are separately capped at 1,048,576 bytes.
+
+See [Security & Privacy](/security-privacy/) for redaction details.

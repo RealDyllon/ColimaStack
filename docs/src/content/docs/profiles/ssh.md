@@ -1,24 +1,39 @@
 ---
 title: SSH
-description: Use Colima SSH configuration and SSH access from ColimaStack.
+description: Understand Colima SSH configuration access in ColimaStack.
 ---
 
-ColimaStack can read SSH configuration with:
-
-```sh
-colima ssh-config
-```
-
-It can also invoke SSH access through Colima:
-
-```sh
-colima ssh
-```
+ColimaStack can read Colima SSH configuration for a selected profile and uses Colima's SSH command shapes where implemented.
 
 ## SSH config
 
-The app can display the Colima SSH configuration document for the selected profile. This is useful when connecting editors, terminals, or automation to a profile.
+The app invokes:
 
-## Layers
+```sh
+COLIMA_PROFILE=<profile> colima ssh-config
+```
 
-Colima supports layer-aware SSH configuration. ColimaStack models layer selection for SSH config and SSH commands where exposed by the backend.
+It can also pass:
+
+```sh
+--layer=true
+--layer=false
+```
+
+If command output is empty, the app can fall back to `$COLIMA_HOME/ssh_config` when present.
+
+## SSH access
+
+The command shape supported by source is:
+
+```sh
+COLIMA_PROFILE=<profile> colima ssh [--layer=true|false] [-- <command...>]
+```
+
+SSH access can mutate the VM depending on the command you run. Use [Activity and Logs](/features/activity/) to review command outcomes when exposed through app actions.
+
+## Troubleshooting
+
+- Confirm the profile exists and is selected.
+- Confirm `colima` is available in [Diagnostics](/features/diagnostics/).
+- Check profile files in [Files and Logs](/profiles/files/).

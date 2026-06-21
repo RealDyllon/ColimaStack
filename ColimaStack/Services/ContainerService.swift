@@ -53,6 +53,18 @@ final class ContainerService {
         await recordCommand("docker restart", verb: "Restarting", id: containerID)
     }
 
+    func pause(containerID: String) async {
+        await recordCommand("docker pause", verb: "Pausing", id: containerID)
+    }
+
+    func resume(containerID: String) async {
+        await recordCommand("docker unpause", verb: "Resuming", id: containerID)
+    }
+
+    func kill(containerID: String) async {
+        await recordCommand("docker kill", verb: "Killing", id: containerID)
+    }
+
     func delete(containerID: String, force: Bool = true) async {
         let forceFlag = force ? " --force" : ""
         await recordCommand("docker rm\(forceFlag)", verb: "Deleting", id: containerID)
