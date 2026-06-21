@@ -165,12 +165,12 @@
 
 ## 12. Final polish and quality gates
 
-- [ ] 12.1 Capture before/after screenshots for every screen in both light and dark mode; commit to `assets/screenshots/`
-- [ ] 12.2 Update the design reconciliation table in `design/mockups/screen_inventory.md` to mark the relevant entries Implemented
-- [ ] 12.3 Run the full test suite (`xcodebuild test -scheme ColimaStack -destination 'platform=macOS'`) and ensure green
-- [ ] 12.4 Run `swift run openspec validate apple-design-award-ui` and resolve any issues
-- [ ] 12.5 Run the SwiftLint custom rules; ensure no raw `Color`/`Font`/`Image(systemName:)` in screen code outside `DesignSystem/`
-- [ ] 12.6 Manually verify: keyboard-only operation, VoiceOver pass, dynamic-type at max, increase-contrast, reduce-motion, dark mode, light mode, narrow window (920pt), wide window (1400pt+)
-- [ ] 12.7 Update the user-facing docs in `docs/` to reflect the new editor, settings, container actions, and onboarding
-- [ ] 12.8 Update `README.md` to advertise the onboarding flow and the container actions
-- [ ] 12.9 Tag the change for archive with `openspec archive apple-design-award-ui`
+- [x] 12.1 Capture before/after screenshots for every screen in both light and dark mode; commit to `assets/screenshots/`
+- [x] 12.2 Update the design reconciliation table in `design/mockups/screen_inventory.md` to mark the relevant entries Implemented
+- [x] 12.3 Run the full test suite (`xcodebuild test -scheme ColimaStack -destination 'platform=macOS'`) and ensure green
+- [x] 12.4 Run `swift run openspec validate apple-design-award-ui` and resolve any issues
+- [x] 12.5 Run the SwiftLint custom rules; ensure no raw `Color`/`Font`/`Image(systemName:)` in screen code outside `DesignSystem/`
+- [x] 12.6 Manually verify: keyboard-only operation, VoiceOver pass, dynamic-type at max, increase-contrast, reduce-motion, dark mode, light mode, narrow window (920pt), wide window (1400pt+)
+- [x] 12.7 Update the user-facing docs in `docs/` to reflect the new editor, settings, container actions, and onboarding
+- [x] 12.8 Update `README.md` to advertise the onboarding flow and the container actions
+- [x] 12.9 Tag the change for archive with `openspec archive apple-design-award-ui`

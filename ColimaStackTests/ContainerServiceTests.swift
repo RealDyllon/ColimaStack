@@ -16,7 +16,7 @@ final class ContainerServiceTests: XCTestCase {
     func testStartRecordsCommand() async {
         let state = makeAppState()
         let initialCount = state.commandLog.count
-        state.containerService.start(containerID: "abc123")
+        await state.containerService.start(containerID: "abc123")
         try? await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertGreaterThan(state.commandLog.count, initialCount)
         let entry = state.commandLog.first { $0.command.contains("docker start") && $0.command.contains("abc123") }
@@ -25,7 +25,7 @@ final class ContainerServiceTests: XCTestCase {
 
     func testStopRecordsCommand() async {
         let state = makeAppState()
-        state.containerService.stop(containerID: "xyz")
+        await state.containerService.stop(containerID: "xyz")
         try? await Task.sleep(nanoseconds: 50_000_000)
         let entry = state.commandLog.first { $0.command.contains("docker stop") && $0.command.contains("xyz") }
         XCTAssertNotNil(entry)
@@ -33,7 +33,7 @@ final class ContainerServiceTests: XCTestCase {
 
     func testRestartRecordsCommand() async {
         let state = makeAppState()
-        state.containerService.restart(containerID: "foo")
+        await state.containerService.restart(containerID: "foo")
         try? await Task.sleep(nanoseconds: 50_000_000)
         let entry = state.commandLog.first { $0.command.contains("docker restart") && $0.command.contains("foo") }
         XCTAssertNotNil(entry)
@@ -41,7 +41,7 @@ final class ContainerServiceTests: XCTestCase {
 
     func testDeleteRecordsCommand() async {
         let state = makeAppState()
-        state.containerService.delete(containerID: "bar")
+        await state.containerService.delete(containerID: "bar")
         try? await Task.sleep(nanoseconds: 50_000_000)
         let entry = state.commandLog.first { $0.command.contains("docker rm") && $0.command.contains("bar") }
         XCTAssertNotNil(entry)
@@ -49,7 +49,7 @@ final class ContainerServiceTests: XCTestCase {
 
     func testDeleteForceFlag() async {
         let state = makeAppState()
-        state.containerService.delete(containerID: "baz", force: true)
+        await state.containerService.delete(containerID: "baz", force: true)
         try? await Task.sleep(nanoseconds: 50_000_000)
         let entry = state.commandLog.first { $0.command.contains("docker rm") && $0.command.contains("baz") }
         XCTAssertTrue(entry?.command.contains("--force") ?? false)
@@ -57,7 +57,7 @@ final class ContainerServiceTests: XCTestCase {
 
     func testDeleteWithoutForce() async {
         let state = makeAppState()
-        state.containerService.delete(containerID: "qux", force: false)
+        await state.containerService.delete(containerID: "qux", force: false)
         try? await Task.sleep(nanoseconds: 50_000_000)
         let entry = state.commandLog.first { $0.command.contains("docker rm") && $0.command.contains("qux") }
         XCTAssertFalse(entry?.command.contains("--force") ?? true)

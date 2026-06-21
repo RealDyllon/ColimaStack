@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import SwiftUI
 @testable import ColimaStack
 
 final class TableMigrationTests: XCTestCase {
